@@ -81,11 +81,16 @@ class HouseholdRelationshipTest extends TestCase
 
     public function test_relationship_records_enforce_referential_integrity(): void
     {
+        $beneficiary = Beneficiary::factory()->create();
+
+        // The related party is valid, so the foreign keys on relationship_type_id
+        // and person_id are what fail here.
         $this->expectException(QueryException::class);
 
         PersonRelationship::create([
             'relationship_type_id' => 999999,
             'person_id' => 999999,
+            'related_beneficiary_id' => $beneficiary->id,
         ]);
     }
 

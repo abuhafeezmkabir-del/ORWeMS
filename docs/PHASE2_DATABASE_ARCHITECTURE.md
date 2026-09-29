@@ -162,8 +162,8 @@ number or government identifier is ever used as a primary key.
 | persons | household_id | households | SET NULL |
 | person_relationships | relationship_type_id | relationship_types | RESTRICT |
 | person_relationships | person_id | persons | RESTRICT |
-| person_relationships | related_person_id | persons | SET NULL |
-| person_relationships | related_beneficiary_id | beneficiaries | SET NULL |
+| person_relationships | related_person_id | persons | RESTRICT † |
+| person_relationships | related_beneficiary_id | beneficiaries | RESTRICT † |
 | assessments | beneficiary_id | beneficiaries | RESTRICT |
 | assessments | programme_id | programmes | SET NULL |
 | needs | assessment_id | assessments | RESTRICT |
@@ -186,6 +186,15 @@ Rationale:
 * Soft deletes handle normal "removal" of `beneficiaries`, `households`,
   `persons` and `documents`, keeping the row — and therefore the audit
   trail — intact.
+* † **Changed in Phase 2.1.** `person_relationships.related_person_id` and
+  `related_beneficiary_id` were `SET NULL` in Phase 2. Two reasons changed
+  that: `SET NULL` would have silently emptied the target of a relationship
+  when a person or beneficiary was hard-deleted, and MySQL refuses to add a
+  `CHECK` constraint on a column that carries a cascading foreign-key action
+  (error 3823), which is required to guarantee the "exactly one related
+  party" rule. `RESTRICT` is the stronger, correct choice: persons and
+  beneficiaries are soft-deleted, so the FK only blocks an accidental
+  destructive delete. See §13.
 
 ## 7. Important Indexes and Uniqueness
 
@@ -200,6 +209,7 @@ Uniqueness:
 * `relationship_types.code`, `need_categories.code`, `intervention_types.code`
 * `households.household_code`
 * `beneficiaries.beneficiary_ref`
+* `beneficiaries.person_id` (added in Phase 2.1 — one roster identity per child)
 
 Indexes (lookup / filter / research orientation):
 
@@ -307,6 +317,138 @@ are stored as data and are safe for the programme team to rename or extend.
 * Additional `sex` / status enumeration values (e.g. `unknown`, `not_disclosed`)
   if programme field practice requires them — all enumeration columns are
   plain strings, so adding values needs no schema change.
+
+---
+
+## 13. Data Integrity Rules (Phase 2.1 review)
+
+Phase 2.1 reviewed the Phase 2 schema for integrity gaps without redesigning
+it. Two genuine gaps were found and are fixed by one new migration,
+`2026_09_29_100000_harden_phase2_integrity`. Everything else was verified and
+deliberately left unchanged.
+
+### 13.1 `person_relationships` — exactly one related party
+
+**Rule:** a relationship must reference a related person **or** a related
+beneficiary. Populating both columns, or leaving both `NULL`, is rejected.
+
+**Why the schema alone was not enough:** Phase 2 declared both related columns
+nullable with `ON DELETE SET NULL`, so the database would happily accept a
+relationship pointing at nothing, or at two things at once.
+
+**How it is enforced (two layers, no triggers):**
+
+| Layer | Mechanism | Applies to |
+|---|---|---|
+| Database | `CHECK` constraint `person_relationships_related_party_check` on MySQL 8.0.16+ | Production (MySQL) |
+| Application | `PersonRelationship::booted()` → `saving` guard, throws `ValidationException` | Every driver, including the SQLite test database |
+
+Laravel 12 has no `Blueprint::check()`, and SQLite cannot add a `CHECK`
+constraint to an existing table, so the DDL is driver-specific. The model
+guard is what keeps behaviour **identical** on every driver and produces a
+readable field-level error instead of a driver-specific SQL error; the MySQL
+`CHECK` is the defence in depth for the production engine, verified by tests
+that bypass Eloquent and insert raw rows.
+
+The guard also rejects a person being related to themselves.
+
+### 13.2 Geographic hierarchy integrity
+
+The hierarchy is `Country → State → LGA → Ward → Community`. Two different
+classes of rule apply, and they are enforced by different mechanisms.
+
+**Enforced by foreign keys (no application code needed):**
+
+| Rule | Mechanism |
+|---|---|
+| Every referenced division exists | FK on each `*_id` column |
+| A division cannot be deleted while children depend on it | `RESTRICT` on `states.country_id`, `local_government_areas.state_id`, `wards.local_government_area_id`, `communities.local_government_area_id` |
+| Division names are unique within their parent | `UNIQUE (parent_id, name)` on every level |
+| A community may exist without a ward | `communities.ward_id` is nullable, `SET NULL` |
+
+**Not expressible as a foreign key — enforced on save by
+`App\Support\Geography\GeographicHierarchy`:**
+
+| Rule | Why a FK cannot do it | Enforced on |
+|---|---|---|
+| A community's `local_government_area_id` must be the LGA that owns its `ward_id` | Both columns live on the same row | `Community::saving` |
+| A beneficiary's five geographic columns must all sit on one branch of the tree (e.g. no Nasarawa state with a Niger State LGA) | Ancestors are denormalised onto one row for reporting | `Beneficiary::saving` |
+| A beneficiary's `ward_id` must belong to its `local_government_area_id` | Same | `Beneficiary::saving` |
+| A beneficiary's `community_id` must belong to its `ward_id` | Same | `Beneficiary::saving` |
+| A beneficiary's `state_id` must belong to its `country_id` | Same | `Beneficiary::saving` |
+
+The rules are **strict about contradictions and permissive about gaps**: a
+beneficiary may hold only a state while the household address is still being
+verified, but may never mix branches. The walk is
+`Community → Ward → LGA → State → Country`, so validating a full address costs
+at most three indexed lookups and nothing at all when no geography is recorded.
+
+**Triggers were rejected on purpose:** they are invisible in application code,
+behave differently across engines, cannot be expressed portably for the SQLite
+test database, and are harder to review than three readable model guards.
+
+### 13.3 Beneficiary ↔ household-roster link (`beneficiaries.person_id`)
+
+**Design (unchanged):** a beneficiary is a child; `persons` is the household
+roster of adults and other members. `beneficiaries.person_id` optionally points
+at this child's own roster row so that one child is not stored twice, and so
+`person_relationships` can describe the child from either side.
+
+**Why the design is valid:** the alternative — `father_name`/`mother_name`
+columns on `beneficiaries` — cannot represent guardians, caregivers, sibling
+sets, or a household that changes composition. Keeping the roster in `persons`
+and the edges in `person_relationships` avoids duplicate identity columns and
+keeps household membership coherent by construction.
+
+**Gap found and fixed:** Phase 2 constrained `person_id` with a foreign key but
+did not make it unique, so two unrelated beneficiaries could claim the same
+person. Phase 2.1 adds `UNIQUE (person_id)`. The column stays nullable, so any
+number of beneficiaries may have no roster row.
+
+**Also enforced on save (`Beneficiary::saving`):** when both
+`beneficiaries.household_id` and the linked `persons.household_id` are set,
+they must be the same household. A roster person with no household yet is
+incomplete data, not a contradiction, and is allowed.
+
+**Soft deletion does not break history.** Because `persons` and `beneficiaries`
+are soft-deleted, `person_id` is never nulled in normal operation — a withdrawn
+roster record leaves the link pointing at the withdrawn row, and the record is
+recoverable with `withTrashed()`. The `ON DELETE SET NULL` behaviour only
+applies to a hard delete, which is blocked for referenced rows by the rules
+above.
+
+### 13.4 Document foundation review — unchanged
+
+Reviewed and accepted as-is. `documents` holds **metadata only**
+(`documentable_type`, `documentable_id`, `document_type`,
+`original_filename`, `storage_path`, `mime_type`, `file_size`, `uploaded_by`).
+There are no BLOB/binary columns, no file contents in the database, and no
+public URL accessor on the model — tests assert all of this. Uploads, virus
+scanning, private-disk storage and download authorisation remain deferred to a
+later phase (see §12).
+
+One gap was closed for consistency: the `documents` morph had no inverse
+relation on any model, so the foundation was not reachable from the entities it
+describes. `documents()` `morphMany` relations were added to `Beneficiary`,
+`Household`, `Person` and `Assessment`. No schema change.
+
+### 13.5 Migration added in Phase 2.1
+
+`2026_09_29_100000_harden_phase2_integrity`:
+
+1. Adds `UNIQUE (person_id)` on `beneficiaries`.
+2. On MySQL: switches `person_relationships.related_person_id` and
+   `related_beneficiary_id` from `ON DELETE SET NULL` to `ON DELETE RESTRICT`
+   (required by MySQL error 3823, and the safer behaviour regardless).
+3. On MySQL: adds the `person_relationships_related_party_check` `CHECK`
+   constraint.
+
+Every step is guarded by an existence check, so the migration is safe to re-run
+after an interrupted attempt, and `down()` restores the exact Phase 2 schema
+(dropping the FK before the unique index, which InnoDB would otherwise refuse
+to release). The SQLite branch performs only step 1; the model guard covers the
+rest there.
+
 
 
 

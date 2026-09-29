@@ -5,12 +5,15 @@ namespace App\Models;
 use App\Enums\BeneficiaryStatus;
 use App\Enums\DateAccuracy;
 use App\Enums\Sex;
+use App\Support\Geography\GeographicHierarchy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class Beneficiary extends Model
 {
@@ -52,6 +55,37 @@ class Beneficiary extends Model
             if (str_starts_with((string) $beneficiary->beneficiary_ref, 'PENDING-')) {
                 $beneficiary->beneficiary_ref = self::buildReference($beneficiary->getKey());
                 $beneficiary->saveQuietly();
+            }
+        });
+
+        // Beneficiary stores every geographic level side by side so reporting
+        // can filter by state/LGA/ward/community without joins. Foreign keys
+        // prove each level exists; they cannot prove the levels describe the
+        // same branch of the hierarchy, so contradictory combinations are
+        // rejected here (Phase 2.1).
+        static::saving(function (Beneficiary $beneficiary) {
+            GeographicHierarchy::assertAddressIsWithinHierarchy(
+                $beneficiary->country_id !== null ? (int) $beneficiary->country_id : null,
+                $beneficiary->state_id !== null ? (int) $beneficiary->state_id : null,
+                $beneficiary->local_government_area_id !== null ? (int) $beneficiary->local_government_area_id : null,
+                $beneficiary->ward_id !== null ? (int) $beneficiary->ward_id : null,
+                $beneficiary->community_id !== null ? (int) $beneficiary->community_id : null,
+            );
+
+            // person_id is this child's own row in the household roster. If both
+            // it and the beneficiary name a household, they must be the same
+            // one. A roster person with no household yet is incomplete data,
+            // not a contradiction, so it is left alone.
+            if ($beneficiary->person_id !== null && $beneficiary->household_id !== null) {
+                $rosterHouseholdId = Person::query()
+                    ->whereKey($beneficiary->person_id)
+                    ->value('household_id');
+
+                if ($rosterHouseholdId !== null && (int) $rosterHouseholdId !== (int) $beneficiary->household_id) {
+                    throw ValidationException::withMessages([
+                        'person_id' => 'The household roster record for this child belongs to a different household.',
+                    ]);
+                }
             }
         });
     }
@@ -122,5 +156,14 @@ class Beneficiary extends Model
     public function interventions(): HasMany
     {
         return $this->hasMany(Intervention::class);
+    }
+
+    /**
+     * Document metadata attached to this child. Files are held on private
+     * storage by a later phase; no upload or download path exists yet.
+     */
+    public function documents(): MorphMany
+    {
+        return $this->morphMany(Document::class, 'documentable');
     }
 }
