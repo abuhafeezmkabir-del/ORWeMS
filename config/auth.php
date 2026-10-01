@@ -94,8 +94,12 @@ return [
         'users' => [
             'provider' => 'users',
             'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
-            'expire' => 60,
-            'throttle' => 60,
+            // Phase 3A: a reset link is a single-use credential. Keep the window
+            // short so a link that leaks (forwarded mail, shared machine) stops
+            // working quickly, and keep the throttle so the endpoint cannot be
+            // used to flood an inbox.
+            'expire' => (int) env('AUTH_PASSWORD_RESET_EXPIRE', 60),
+            'throttle' => (int) env('AUTH_PASSWORD_RESET_THROTTLE', 60),
         ],
     ],
 

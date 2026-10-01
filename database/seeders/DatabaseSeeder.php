@@ -26,8 +26,13 @@ class DatabaseSeeder extends Seeder
             InterventionTypeSeeder::class,
         ]);
 
-        // Local development convenience account only. It is never created
-        // outside local/testing environments and contains no real identity.
+        // Local development convenience account only.
+        //
+        // This is NOT a production credential and must never be: it is created
+        // only when the environment is explicitly `local` or `testing`, it
+        // carries no real identity, and its password is the conventional
+        // throwaway fixture value. WICHOV operator accounts are provisioned by
+        // an administrator in a later phase — there is no public registration.
         if (app()->environment(['local', 'testing'])) {
             User::firstOrCreate(
                 ['email' => 'test@example.com'],
