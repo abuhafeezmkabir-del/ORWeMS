@@ -43,10 +43,10 @@
             <span class="badge bg-secondary ms-auto text-uppercase" style="font-size: 0.65rem;">Planned</span>
         </a>
 
-        <div class="sidebar-heading">Care & Family</div>
+        <div class="sidebar-heading">Care &amp; Family</div>
         <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
             <i class="bi bi-person-vcard"></i>
-            <span>Guardians & Caregivers</span>
+            <span>Guardians &amp; Caregivers</span>
             <span class="badge bg-secondary ms-auto text-uppercase" style="font-size: 0.65rem;">Planned</span>
         </a>
         <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
@@ -70,7 +70,7 @@
         <div class="sidebar-heading">Intelligence</div>
         <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
             <i class="bi bi-graph-up"></i>
-            <span>Reports & Analytics</span>
+            <span>Reports &amp; Analytics</span>
             <span class="badge bg-secondary ms-auto text-uppercase" style="font-size: 0.65rem;">Planned</span>
         </a>
         <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
@@ -85,11 +85,25 @@
             <span>Users</span>
             <span class="badge bg-secondary ms-auto text-uppercase" style="font-size: 0.65rem;">Planned</span>
         </a>
-        <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
-            <i class="bi bi-shield-lock"></i>
-            <span>Roles & Permissions</span>
-            <span class="badge bg-secondary ms-auto text-uppercase" style="font-size: 0.65rem;">Planned</span>
-        </a>
+
+        {{-- Roles & Permissions is only shown to operators who may read them.
+             Hiding the link is a usability measure only: the route enforces
+             permission:roles.view independently. An operator who knows the URL
+             will receive a 403, not a different page. --}}
+        @can('roles.view')
+            <a href="{{ route('administration.roles.index') }}"
+               class="sidebar-link {{ request()->routeIs('administration.roles.*', 'administration.permissions.*') ? 'active' : '' }}">
+                <i class="bi bi-shield-lock"></i>
+                <span>Roles &amp; Permissions</span>
+            </a>
+        @else
+            <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
+                <i class="bi bi-shield-lock"></i>
+                <span>Roles &amp; Permissions</span>
+                <span class="badge bg-secondary ms-auto text-uppercase" style="font-size: 0.65rem;">Planned</span>
+            </a>
+        @endcan
+
         <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
             <i class="bi bi-geo-alt"></i>
             <span>Locations</span>
@@ -109,6 +123,6 @@
 
     <div class="sidebar-footer">
         <div class="fw-semibold text-truncate">WICHOV Platform</div>
-        <div class="text-secondary small">Phase 1A Baseline UI</div>
+        <div class="text-secondary small">Phase 3B Authorization</div>
     </div>
 </aside>

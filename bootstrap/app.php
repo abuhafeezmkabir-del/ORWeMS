@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureAccountIsActive;
+use App\Http\Middleware\EnsureUserHasPermission;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -37,6 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // dropped. Phase 3B wraps every authenticated route in one group.
         $middleware->alias([
             'account.active' => EnsureAccountIsActive::class,
+            'permission' => EnsureUserHasPermission::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

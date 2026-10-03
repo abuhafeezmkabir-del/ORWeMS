@@ -1,0 +1,195 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\Permission;
+use App\Models\Role;
+use App\Support\Authorization\PermissionCatalog;
+use Illuminate\Database\Seeder;
+
+/**
+ * Phase 3B — which role receives which permission.
+ *
+ * This is the least-privilege decision, written out in one reviewable place.
+ * Every absence below is as deliberate as every presence: a permission omitted
+ * from a role is refused, because the system denies by default.
+ *
+ * The recurring rule is SEPARATION OF DUTIES — the person who enters a record
+ * is not the person who confirms it, and the person who does the casework is
+ * not the person who administers the system. Three splits drive the mapping:
+ *
+ *   entry (registration_officer) -> verification (programme_manager)
+ *   assessment (assessor)        -> approval (programme_manager)
+ *   casework (case_officer)      -> administration (system_administrator)
+ *
+ * Idempotent by construction: `sync` converges on exactly the set below, so
+ * running the seeder repeatedly neither duplicates grants nor accumulates drift.
+ */
+class RolePermissionSeeder extends Seeder
+{
+    public function run(): void
+    {
+        foreach (self::mapping() as $roleCode => $permissionCodes) {
+            $role = Role::where('code', $roleCode)->first();
+
+            // Silent here would mean a role silently received nothing.
+            if ($role === null) {
+                throw new \RuntimeException(
+                    "Role [{$roleCode}] is not defined. Run RoleSeeder before RolePermissionSeeder."
+                );
+            }
+
+            $role->permissions()->sync(
+                Permission::query()
+                    ->whereIn('code', $permissionCodes)
+                    ->pluck('id')
+                    ->all()
+            );
+        }
+
+        PermissionCatalog::flush();
+    }
+
+    /**
+     * Role code => the permission codes it confers.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function mapping(): array
+    {
+        return [
+            // Break-glass ownership. Every permission is granted through this
+            // ordinary pivot row so the grant is visible in the administration
+            // screens and auditable in the database like any other.
+            //
+            // This is a ROLE, not a bypass: it obeys account status (a disabled
+            // super administrator is locked out), it appears in role-permission
+            // listings, and revoking its permissions removes its power exactly
+            // as it would for any other role.
+            'super_administrator' => array_column(
+                PermissionSeeder::permissions(),
+                'code'
+            ),
+
+            // Administration only. Note what is ABSENT: no beneficiaries.*, no
+            // households.*, no documents.*. WICHOV's administrator manages the
+            // platform; reading children's case records is a different job with
+            // a different risk profile, and merging them would hand every
+            // administrator full read access to beneficiary data.
+            'system_administrator' => [
+                'users.view', 'users.create', 'users.update', 'users.disable',
+                'users.assign_roles', 'roles.view', 'roles.manage',
+                'programmes.view', 'programmes.manage',
+                'system.settings', 'system.maintenance',
+            ],
+
+            // Oversight: confirms and closes, but does not do the data entry.
+            // The absence of beneficiaries.create and assessments.create is the
+            // point — a manager signs off work, they do not enter it.
+            'programme_manager' => [
+                'beneficiaries.view', 'beneficiaries.verify', 'beneficiaries.archive',
+                'households.view', 'households.archive',
+                'persons.view', 'relationships.view',
+                'assessments.view', 'assessments.approve',
+                'needs.view', 'needs.close',
+                'interventions.view', 'interventions.close',
+                'documents.view',
+                'programmes.view', 'reports.view', 'reports.export',
+                'users.view',
+            ],
+
+            // Field casework end to end. Note the ABSENCES that matter here:
+            // no beneficiaries.verify (they did not enter the record, so they do
+            // not confirm it), no reports.export (a caseworker exports data about
+            // named children), and no administration of any kind.
+            'case_officer' => [
+                'beneficiaries.view', 'beneficiaries.create', 'beneficiaries.update',
+                'households.view', 'households.create', 'households.update',
+                'persons.view', 'persons.create', 'persons.update',
+                'relationships.view', 'relationships.create', 'relationships.update',
+                'assessments.view', 'assessments.create', 'assessments.update',
+                'needs.view', 'needs.create', 'needs.update',
+                'interventions.view', 'interventions.create', 'interventions.update',
+                'documents.view', 'documents.upload',
+                'programmes.view',
+            ],
+
+            // Narrow intake. Data entry without the power to confirm: the
+            // registration can be entered accurately and completely, but
+            // confirming it is a different person's decision.
+            'registration_officer' => [
+                'beneficiaries.view', 'beneficiaries.create', 'beneficiaries.update',
+                'households.view', 'households.create', 'households.update',
+                'persons.view', 'persons.create', 'persons.update',
+                'relationships.view', 'relationships.create',
+                'documents.view', 'documents.upload',
+                'programmes.view',
+            ],
+
+            // Assessment, separated from registration: someone can assess a
+            // household's circumstances without also being the person who typed
+            // its members in. No assessments.approve — signing off is the
+            // programme manager's, so the rating is reviewed above the assessor.
+            'assessor' => [
+                'beneficiaries.view',
+                'households.view',
+                'persons.view',
+                'assessments.view', 'assessments.create', 'assessments.update',
+                'needs.view', 'needs.create', 'needs.update',
+                'interventions.view',
+                'documents.view', 'documents.upload',
+                'programmes.view',
+            ],
+
+            // Read-only oversight. Every `.view` in the system, and deliberately
+            // nothing else:
+            //   - no create/update/verify/approve/close, so oversight cannot be
+            //     quietly converted into action;
+            //   - NO reports.export, because an auditor's value is in being able
+            //     to read what happened, not in being able to remove it in bulk
+            //     — export is the classic route for bulk exfiltration.
+            'auditor' => array_values(array_filter(
+                array_column(PermissionSeeder::permissions(), 'code'),
+                static fn (string $code): bool => str_ends_with($code, '.view')
+            )),
+        ];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Roles evaluated and deliberately NOT created
+    |--------------------------------------------------------------------------
+    |
+    | Recorded so the catalogue can be reviewed rather than merely trusted.
+    |
+    | education_officer / health_officer
+    |     ORWeMS will need sector officers, but there is no education or health
+    |     module yet: no model, no controller, no route. Creating the roles now
+    |     would mean inventing permissions (`education.case_notes.view`) for
+    |     screens that cannot exist, and would leave a plausible-looking role
+    |     that grants nothing and appears to be broken. The permission model
+    |     supports them without change when the modules are built — and because
+    |     roles carry no location, one `health_officer` will serve every state.
+    |
+    | research_analyst
+    |     ORWeMS is also a PhD research platform, and a research role is
+    |     foreseeable. It is withheld deliberately. Research access must not be
+    |     blanket access to raw beneficiary records, and the controls that make
+    |     research safe — de-identification and data scope — are Phase 3C and
+    |     later. Creating the role now would grant it real beneficiary access
+    |     before the safeguards that justify that access exist.
+    |
+    | read_only_viewer
+    |     Covered by `auditor`, which already holds every `.view` permission and
+    |     nothing else. A second read-only role would be a duplicate with a
+    |     different name, and duplicate roles are how privilege drift starts:
+    |     one gets reviewed, the other is forgotten.
+    |
+    | welfare_manager
+    |     Overlaps `programme_manager` exactly for the pilot. Splitting
+    |     supervision from programme ownership would be reasonable once both
+    |     functions exist as distinct WICHOV posts; until then it is one job
+    |     wearing two names, and the separation is documented here for when that
+    |     changes rather than seeded as an empty shell.
+    */
+}
