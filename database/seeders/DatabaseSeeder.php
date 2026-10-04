@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\Country;
+use App\Models\Programme;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -64,6 +66,27 @@ class DatabaseSeeder extends Seeder
             // real first administrator is provisioned deliberately, through the
             // console, on a named account.
             $user->assignRole(Role::where('code', 'super_administrator')->sole());
+
+            // Phase 3C: the development account also needs an explicit access
+            // scope, because scope is never implicit and is never conferred by a
+            // role. Without this the local administrator would hold every
+            // permission and still reach no programme and no area — which is the
+            // correct production behaviour, and merely inconvenient in
+            // development.
+            //
+            // A country-level geographic scope covers every state, LGA, ward and
+            // community beneath it, so one row is enough for the pilot. These are
+            // still ordinary scope rows: same tables, same constraints, same
+            // environment guard as the role assignment above, and removable with
+            // a single UPDATE. There is no special-cased account and no bypass in
+            // the authorization code — revoke these rows and the account reaches
+            // nothing at all.
+            //
+            // WICHOV's real operators are scoped deliberately by an administrator
+            // in a later phase; no other seeder grants scope to any account, in
+            // any environment.
+            $user->assignProgrammeScope(Programme::where('code', 'WICHOV-PILOT')->sole());
+            $user->assignGeographicScope(Country::where('iso_code', 'NGA')->sole());
         }
     }
 }

@@ -2,10 +2,15 @@
 
 namespace App\Models;
 
+use App\Enums\GeographicScopeLevel;
+use App\Enums\ProgrammeStatus;
 use App\Enums\UserStatus;
+use App\Support\Authorization\ScopeAuthorization;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
@@ -204,5 +209,190 @@ class User extends Authenticatable
     public function assignRole(Role $role): void
     {
         $this->roles()->syncWithoutDetaching([$role->getKey()]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Access scope (Phase 3C)
+    |--------------------------------------------------------------------------
+    |
+    | Phase 3B answered WHAT this account may do. The methods below answer the
+    | separate question of WHERE that authority reaches: which programmes, and
+    | which geographic areas.
+    |
+    | Scope is a FILTER, never a grant. It is consulted only after a permission
+    | has already been confirmed, and it can only narrow what that permission
+    | reaches — a perfectly matching scope on an account with no relevant
+    | permission still reaches nothing. That is what keeps
+    | `system_administrator`, which administers accounts and roles, from being
+    | able to read a single child's record merely by being scoped everywhere.
+    |
+    | Nothing here is role-aware and nothing here inspects an account id, an
+    | email address or a role code. There is no implicit "administrator sees
+    | everything" rule: an operator with national reach is expressed as a
+    | country-level geographic scope plus explicit programme assignments, which
+    | is visible in the database and revocable like any other grant.
+    |
+    */
+
+    /**
+     * Programmes this account is assigned to, active or not.
+     *
+     * WithTimestamps() records when each assignment was made; the row is
+     * accountability evidence, not a scratch link.
+     */
+    public function programmes(): BelongsToMany
+    {
+        return $this->belongsToMany(Programme::class, 'programme_user')
+            ->withPivot('is_active')
+            ->withTimestamps();
+    }
+
+    /**
+     * The programmes this account may actually work in right now.
+     *
+     * Both filters matter: an assignment that has been withdrawn grants
+     * nothing, and neither does an assignment to a programme that is no longer
+     * active. Written once here so no caller can forget either.
+     */
+    public function activeProgrammes(): BelongsToMany
+    {
+        return $this->programmes()
+            ->wherePivot('is_active', true)
+            ->where('programmes.status', ProgrammeStatus::Active->value);
+    }
+
+    /**
+     * Geographic areas this account is scoped to, active or not.
+     */
+    public function geographicScopes(): HasMany
+    {
+        return $this->hasMany(UserGeographicScope::class);
+    }
+
+    /**
+     * The geographic scope assignments that currently confer access.
+     */
+    public function activeGeographicScopes(): HasMany
+    {
+        return $this->geographicScopes()->where('is_active', true);
+    }
+
+    /**
+     * Whether this account may work within a programme.
+     */
+    public function hasProgrammeAccess(Programme|int $programme): bool
+    {
+        return ScopeAuthorization::allowsProgramme($this, $programme);
+    }
+
+    /**
+     * Whether this account may work within a geographic record.
+     *
+     * Accepts any geography model and resolves its level; a model that is not
+     * part of the hierarchy is refused rather than throwing.
+     */
+    public function hasGeographicAccess(Model $geography): bool
+    {
+        return ScopeAuthorization::allowsGeography($this, $geography);
+    }
+
+    /**
+     * Whether this account may reach a record that belongs to both a programme
+     * and a place. Both dimensions must be held; either may be omitted only when
+     * the record genuinely has just one.
+     */
+    public function hasScopeFor(?Programme $programme = null, ?Model $geography = null): bool
+    {
+        return ScopeAuthorization::allowsScope($this, $programme, $geography);
+    }
+
+    /**
+     * Assign a programme to this account.
+     *
+     * Idempotent: assigning an already-assigned programme re-activates the
+     * existing row rather than adding a second one, so repeated seeding cannot
+     * accumulate duplicates. Not mass-assignable and never reachable from a
+     * request payload — it exists for administrative code that has already been
+     * authorized.
+     */
+    public function assignProgrammeScope(Programme|int $programme): void
+    {
+        $programmeId = $programme instanceof Programme ? $programme->getKey() : $programme;
+
+        if ($this->programmes()->whereKey($programmeId)->exists()) {
+            $this->programmes()->updateExistingPivot($programmeId, ['is_active' => true]);
+
+            return;
+        }
+
+        $this->programmes()->attach($programmeId, ['is_active' => true]);
+    }
+
+    /**
+     * Withdraw a programme from this account.
+     *
+     * The row is deactivated, not deleted: who was once responsible for a
+     * programme is part of the record of what happened.
+     */
+    public function revokeProgrammeScope(Programme|int $programme): void
+    {
+        $programmeId = $programme instanceof Programme ? $programme->getKey() : $programme;
+
+        $this->programmes()->updateExistingPivot($programmeId, ['is_active' => false]);
+    }
+
+    /**
+     * Scope this account to a geographic area.
+     *
+     * The level is derived from the model rather than accepted from the caller,
+     * so a scope can never be recorded at the wrong level — which would make it
+     * match nothing, or worse, match the wrong branch of the hierarchy.
+     *
+     * Idempotent: re-scoping to an area the account already holds re-activates
+     * the existing row. Ownership comes from the relationship and the other four
+     * level columns are forced to null, so a single row always names exactly one
+     * area.
+     */
+    public function assignGeographicScope(Model $geography): void
+    {
+        $level = GeographicScopeLevel::forModel($geography);
+
+        $scope = $this->geographicScopes()->firstOrNew([
+            'level' => $level->value,
+            $level->column() => $geography->getKey(),
+        ]);
+
+        // forceFill rather than fill: user_id is not mass-assignable (ownership
+        // is not a form field) and is_active is a security state, so both are
+        // set explicitly here and never merged from input.
+        $scope->forceFill([
+            'user_id' => $this->getKey(),
+            'level' => $level->value,
+            $level->column() => $geography->getKey(),
+            'is_active' => true,
+        ]);
+
+        foreach ($level->otherColumns() as $column) {
+            $scope->forceFill([$column => null]);
+        }
+
+        $scope->save();
+    }
+
+    /**
+     * Withdraw a geographic area from this account.
+     *
+     * Deactivates rather than deletes, so the record of which areas an operator
+     * could once reach survives a revocation.
+     */
+    public function revokeGeographicScope(Model $geography): void
+    {
+        $level = GeographicScopeLevel::forModel($geography);
+
+        $this->geographicScopes()
+            ->where('level', $level->value)
+            ->where($level->column(), $geography->getKey())
+            ->update(['is_active' => false]);
     }
 }
