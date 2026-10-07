@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\AuthenticatedPasswordController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
@@ -44,4 +45,26 @@ Route::middleware('guest')->group(function () {
 Route::middleware(['auth', 'account.active'])->group(function () {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
+
+    /*
+    |------------------------------------------------------------------------
+    | Authenticated password change (Phase 3D)
+    |------------------------------------------------------------------------
+    |
+    | Deliberately reachable when a password has expired: neither route carries
+    | the `password.fresh` middleware, so the screen that fixes an expired
+    | password is never itself blocked by it. It sits behind `auth` (WHO) and
+    | `account.active` (WHETHER) like every other authenticated route.
+    |
+    | POST, not GET, for the change itself: replacing a credential is a state
+    | change and must not be triggerable by a link or a prefetch. CSRF applies
+    | on top of that, as it does to every state-changing route.
+    |
+    | There is deliberately no route that lists, edits or deletes audit records.
+    */
+    Route::get('change-password', [AuthenticatedPasswordController::class, 'edit'])
+        ->name('password.change');
+
+    Route::post('change-password', [AuthenticatedPasswordController::class, 'update'])
+        ->name('password.update');
 });

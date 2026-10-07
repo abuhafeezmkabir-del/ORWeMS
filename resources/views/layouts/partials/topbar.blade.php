@@ -39,6 +39,11 @@
                     </h6>
                 </li>
                 <li><a class="dropdown-item disabled" href="#">Profile Settings <span class="badge bg-secondary ms-2 small">Planned</span></a></li>
+                {{-- Phase 3D — the authenticated change-password screen. Kept
+                     as a real link because this is where an operator expects
+                     to find it, and because it is the screen that resolves a
+                     password-expiry redirect. --}}
+                <li><a class="dropdown-item" href="{{ route('password.change') }}"><i class="bi bi-shield-lock me-2"></i>Change password</a></li>
                 <li><a class="dropdown-item disabled" href="#">Security &amp; MFA <span class="badge bg-secondary ms-2 small">Planned</span></a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li>

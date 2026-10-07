@@ -1,6 +1,10 @@
 <?php
 
+use App\Http\Middleware\ApplySecurityHeaders;
+use App\Http\Middleware\AssignRequestId;
 use App\Http\Middleware\EnsureAccountIsActive;
+use App\Http\Middleware\EnsurePasswordIsFresh;
+use App\Http\Middleware\EnsureSecureTransport;
 use App\Http\Middleware\EnsureUserHasPermission;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -21,6 +25,30 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('dashboard'));
 
+        // Phase 3D — cross-cutting request/response hardening.
+        //
+        // Appended to the GLOBAL stack rather than to the `web` group, so the
+        // headers reach every response including redirects, 404s, CSRF
+        // rejections and the `/up` health probe. None of the three touches the
+        // session, the database or the authenticated user, so running before
+        // `StartSession` is safe by construction.
+        //
+        //   AssignRequestId      one correlation id per request, echoed back as
+        //                        X-Request-Id and stamped onto audit rows
+        //   EnsureSecureTransport  optional HTTP->HTTPS redirect; off unless
+        //                        ORWEMS_FORCE_HTTPS=true, so local HTTP works
+        //   ApplySecurityHeaders  CSP, frame, referrer, type and permissions
+        //                        headers on every response; HSTS only when
+        //                        ORWEMS_HSTS_ENABLED=true
+        //
+        // Order matters only in that AssignRequestId must run first: the audit
+        // rows written while a later middleware is running need its id.
+        $middleware->append([
+            AssignRequestId::class,
+            EnsureSecureTransport::class,
+            ApplySecurityHeaders::class,
+        ]);
+
         // Applied explicitly alongside `auth` on authenticated routes.
         //
         // It is NOT added with appendToGroup(). Two traps make group injection
@@ -39,6 +67,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'account.active' => EnsureAccountIsActive::class,
             'permission' => EnsureUserHasPermission::class,
+
+            // Phase 3D — password-age gate. Explicit alias on the route for the
+            // same reason as the two above. It is a no-op unless password
+            // expiry is enabled in config/orwems.php, and it is deliberately
+            // NOT applied to the change-password routes: the screen that fixes
+            // an expired password must never be blocked by it.
+            'password.fresh' => EnsurePasswordIsFresh::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

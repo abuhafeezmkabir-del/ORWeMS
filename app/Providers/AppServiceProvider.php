@@ -2,11 +2,20 @@
 
 namespace App\Providers;
 
+use App\Listeners\AuditLoginFailure;
+use App\Listeners\AuditLoginLockout;
+use App\Listeners\AuditLoginSuccess;
+use App\Listeners\AuditLogout;
+use App\Listeners\AuditPasswordReset;
 use App\Listeners\LogoutOtherSessionsAfterPasswordReset;
 use App\Listeners\RecordLastLoginAt;
 use App\Models\User;
 use App\Support\Authorization\PermissionCatalog;
 use Illuminate\Auth\Events\Authenticated;
+use Illuminate\Auth\Events\Failed;
+use Illuminate\Auth\Events\Lockout;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -19,7 +28,26 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Switch off Laravel's automatic event-listener discovery.
         //
+        // Discovery scans app/Listeners and registers every class it finds
+        // purely from its `handle()` type-hint — silently, with no line of
+        // code anywhere saying so. ORWeMS then registers the SAME listeners
+        // explicitly in boot() below, which is where their rationale is
+        // written down, and each one ran TWICE per event: two audit rows for
+        // every failed sign-in, two sessions destroyed for every password
+        // reset. Behaviour that is duplicated rather than wrong is exactly the
+        // kind of defect that survives review.
+        //
+        // Explicit registration wins here over dropping the boot() calls:
+        // for security listeners the wiring must be visible in a file someone
+        // can read, review and reason about the order of — not inferred from a
+        // directory scan. Every listener in app/Listeners is registered below,
+        // so nothing is left unwired by turning discovery off.
+        //
+        // Must run before boot: EventServiceProvider resolves the discovered
+        // list inside a `booting` callback, not in register().
+        \Illuminate\Foundation\Support\Providers\EventServiceProvider::disableEventDiscovery();
     }
 
     /**
@@ -32,6 +60,24 @@ class AppServiceProvider extends ServiceProvider
         // covered automatically.
         Event::listen(Authenticated::class, RecordLastLoginAt::class);
         Event::listen(PasswordReset::class, LogoutOtherSessionsAfterPasswordReset::class);
+
+        // Phase 3D — audit trail for authentication security events.
+        //
+        // Registered against the framework's own events rather than against a
+        // controller, exactly like the Phase 3A listeners above, so a future
+        // sign-in path (console, API guard, social login) is audited without
+        // anyone remembering to add a call. The listeners themselves decide
+        // what is safe to persist; nothing credential-shaped is forwarded.
+        //
+        // `Failed` is what records a rejected sign-in, and it fires whether the
+        // address was unknown, the password wrong, or the account disabled —
+        // three outcomes the operator cannot tell apart, and three an
+        // investigator must be able to.
+        Event::listen(Login::class, AuditLoginSuccess::class);
+        Event::listen(Failed::class, AuditLoginFailure::class);
+        Event::listen(Logout::class, AuditLogout::class);
+        Event::listen(Lockout::class, AuditLoginLockout::class);
+        Event::listen(PasswordReset::class, AuditPasswordReset::class);
 
         // Phase 3B — bind the permission vocabulary to Laravel's Gate.
         //

@@ -4,7 +4,9 @@ namespace App\Models;
 
 use App\Enums\GeographicScopeLevel;
 use App\Enums\ProgrammeStatus;
+use App\Enums\SecurityEvent;
 use App\Enums\UserStatus;
+use App\Support\Audit\Auditor;
 use App\Support\Authorization\ScopeAuthorization;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -121,6 +123,60 @@ class User extends Authenticatable
 
     /*
     |--------------------------------------------------------------------------
+    | Password age (Phase 3D)
+    |--------------------------------------------------------------------------
+    |
+    | Off unless config('orwems.security.password_expiry.enabled') is true, so
+    | switching the policy on never requires a code change and never surprises
+    | an operator who deployed normally. The default is off because expiring
+    | passwords is an operational decision for WICHOV, not something a code
+    | deployment should decide on their behalf.
+    |
+    | A null `password_changed_at` is NOT treated as expired. Every account
+    | provisioned before the column existed would otherwise be expired the
+    | instant the policy was switched on — including the administrator who
+    | switches it on. Those accounts are grandfathered until their password is
+    | next changed, at which point the timestamp is stamped and the age rule
+    | takes over. Deliberate, documented, and asserted by the expiry test.
+    */
+
+    /**
+     * Whether this password is past the configured maximum age and must be
+     * replaced before the operator may continue.
+     *
+     * Consulted only by App\Http\Middleware\EnsurePasswordIsFresh, and only
+     * when the feature is enabled. `days <= 0` is treated as "not configured"
+     * rather than "expired on birth", so a misconfigured deployment fails open
+     * to today's behaviour instead of locking every operator out of the
+     * system — the safer direction for a facility that cannot afford to lose
+     * access to its own safeguarding records.
+     */
+    public function passwordMustBeChanged(): bool
+    {
+        if (! (bool) config('orwems.security.password_expiry.enabled', false)) {
+            return false;
+        }
+
+        $days = (int) config('orwems.security.password_expiry.days', 180);
+
+        if ($days <= 0 || $this->password_changed_at === null) {
+            return false;
+        }
+
+        return $this->password_changed_at->copy()->addDays($days)->isPast();
+    }
+
+    /**
+     * The moment this password was last replaced, whether by the operator or
+     * through a reset link. Null for accounts that predate the column.
+     */
+    public function passwordChangedAt(): ?\DateTimeInterface
+    {
+        return $this->password_changed_at;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Phase 3B — authorization
     |--------------------------------------------------------------------------
     |
@@ -208,7 +264,23 @@ class User extends Authenticatable
      */
     public function assignRole(Role $role): void
     {
-        $this->roles()->syncWithoutDetaching([$role->getKey()]);
+        // syncWithoutDetaching returns the sync summary: `attached` lists the
+        // rows it actually added, and is empty when the role was already held.
+        // Only the change is audited — a grant is an event, and recording
+        // "assigned" for an assignment that did not happen would make the
+        // trail unreadable.
+        $sync = $this->roles()->syncWithoutDetaching([$role->getKey()]);
+
+        if (($sync['attached'] ?? []) === []) {
+            return;
+        }
+
+        Auditor::record(
+            SecurityEvent::RoleAssignment,
+            actor: Auditor::currentActor(),
+            subject: $this,
+            context: ['role_code' => $role->code],
+        );
     }
 
     /*
@@ -320,13 +392,28 @@ class User extends Authenticatable
     {
         $programmeId = $programme instanceof Programme ? $programme->getKey() : $programme;
 
-        if ($this->programmes()->whereKey($programmeId)->exists()) {
+        $existing = $this->programmes()->whereKey($programmeId)->first();
+
+        if ($existing !== null) {
+            // Re-activating a withdrawn assignment is a real change and is
+            // audited as such; one that was already active is not.
+            $wasActive = (bool) $existing->pivot->is_active;
+
             $this->programmes()->updateExistingPivot($programmeId, ['is_active' => true]);
 
-            return;
+            if ($wasActive) {
+                return;
+            }
+        } else {
+            $this->programmes()->attach($programmeId, ['is_active' => true]);
         }
 
-        $this->programmes()->attach($programmeId, ['is_active' => true]);
+        Auditor::record(
+            SecurityEvent::ProgrammeScopeGranted,
+            actor: Auditor::currentActor(),
+            subject: $this,
+            context: ['programme_id' => $programmeId],
+        );
     }
 
     /**
@@ -339,7 +426,25 @@ class User extends Authenticatable
     {
         $programmeId = $programme instanceof Programme ? $programme->getKey() : $programme;
 
+        // Only a live assignment is worth a row. Revoking something that was
+        // already withdrawn would manufacture an event out of a no-op.
+        $affected = $this->programmes()
+            ->wherePivot('is_active', true)
+            ->whereKey($programmeId)
+            ->exists();
+
         $this->programmes()->updateExistingPivot($programmeId, ['is_active' => false]);
+
+        if (! $affected) {
+            return;
+        }
+
+        Auditor::record(
+            SecurityEvent::ProgrammeScopeRevoked,
+            actor: Auditor::currentActor(),
+            subject: $this,
+            context: ['programme_id' => $programmeId],
+        );
     }
 
     /**
@@ -378,6 +483,22 @@ class User extends Authenticatable
         }
 
         $scope->save();
+
+        // Audited only when something actually changed: a brand-new row
+        // (wasRecentlyCreated), or a re-activation of a withdrawn scope
+        // (wasChanged()). Granting an area the account already holds writes
+        // nothing, because nothing happened.
+        if ($scope->wasRecentlyCreated || $scope->wasChanged()) {
+            Auditor::record(
+                SecurityEvent::GeographicScopeGranted,
+                actor: Auditor::currentActor(),
+                subject: $this,
+                context: [
+                    'level' => $level->value,
+                    'geography_id' => $geography->getKey(),
+                ],
+            );
+        }
     }
 
     /**
@@ -390,9 +511,29 @@ class User extends Authenticatable
     {
         $level = GeographicScopeLevel::forModel($geography);
 
-        $this->geographicScopes()
+        $query = $this->geographicScopes()
             ->where('level', $level->value)
-            ->where($level->column(), $geography->getKey())
-            ->update(['is_active' => false]);
+            ->where($level->column(), $geography->getKey());
+
+        // Checked before the write: a scope that was already withdrawn is not
+        // a revocation, and manufacturing an audit row for it would put an
+        // event in the trail that never happened.
+        $wasActive = (clone $query)->where('is_active', true)->exists();
+
+        $query->update(['is_active' => false]);
+
+        if (! $wasActive) {
+            return;
+        }
+
+        Auditor::record(
+            SecurityEvent::GeographicScopeRevoked,
+            actor: Auditor::currentActor(),
+            subject: $this,
+            context: [
+                'level' => $level->value,
+                'geography_id' => $geography->getKey(),
+            ],
+        );
     }
 }

@@ -23,12 +23,16 @@ Route::get('/', function () {
 //
 // Protected from Phase 3A onward. `auth` requires a signed-in operator;
 // `account.active` refuses an operator whose account has been disabled, so
-// revoking access takes effect immediately rather than at session expiry.
+// revoking access takes effect immediately rather than at session expiry;
+// `password.fresh` (Phase 3D) refuses a session whose password is past the
+// configured age — it is a no-op unless ORWEMS_PASSWORD_EXPIRY_ENABLED=true,
+// and the change-password route in routes/auth.php is exempt so an expired
+// operator can always reach the fix.
 // No role checks yet: the dashboard stays a neutral authenticated landing
 // page until Phase 3B establishes authorization.
 Route::get('/dashboard', function () {
     return view('dashboard');
-})->middleware(['auth', 'account.active'])->name('dashboard');
+})->middleware(['auth', 'account.active', 'password.fresh'])->name('dashboard');
 
 /*
 |--------------------------------------------------------------------------
@@ -43,6 +47,8 @@ Route::get('/dashboard', function () {
 |   auth            WHO is making the request (guest -> redirected to sign in)
 |   account.active  WHETHER THEY MAY ACT AT ALL (Phase 3A: a disabled operator
 |                   loses their session immediately)
+|   password.fresh  WHETHER THEIR CREDENTIAL IS STILL CURRENT (Phase 3D; a
+|                   no-op unless password expiry is enabled in configuration)
 |   permission      WHETHER THEY MAY DO THIS SPECIFIC THING (-> 403)
 |
 | `account.active` must precede `permission`. In the other order a revoked
@@ -55,7 +61,7 @@ Route::get('/dashboard', function () {
 | starts.
 */
 
-Route::middleware(['auth', 'account.active'])
+Route::middleware(['auth', 'account.active', 'password.fresh'])
     ->prefix('administration')
     ->name('administration.')
     ->group(function () {
