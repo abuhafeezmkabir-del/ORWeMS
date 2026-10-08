@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\BeneficiaryStatus;
 use App\Enums\DateAccuracy;
 use App\Enums\Sex;
+use App\Support\Authorization\ScopeAuthorization;
 use App\Support\Geography\GeographicHierarchy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -141,6 +142,51 @@ class Beneficiary extends Model
     public function programme(): BelongsTo
     {
         return $this->belongsTo(Programme::class);
+    }
+
+    /**
+     * The most specific place this record carries, for scope decisions.
+     *
+     * A beneficiary stores every geographic level side by side (so reporting
+     * can filter by state without joins), but scope needs ONE anchor to walk
+     * ancestors from — the deepest level present. `allowsScope()` then accepts
+     * a scope at that level or any level above it, which is how a state scope
+     * covers a community-level record without any copying.
+     *
+     * The first loaded relation wins over a fresh query: the policy always
+     * calls this on an already-loaded record, and re-querying each level here
+     * would add five queries to every authorization check.
+     */
+    public function geography(): ?Model
+    {
+        return $this->community
+            ?? $this->ward
+            ?? $this->localGovernmentArea
+            ?? $this->state
+            ?? $this->country;
+    }
+
+    /**
+     * Beneficiaries this operator may reach, as a query.
+     *
+     * The ONLY query the index page reads from. It delegates to
+     * `ScopeAuthorization::applyBeneficiaryScope()` so the listing and the
+     * detail page share one definition of "in scope" — they cannot disagree.
+     * Filtering happens in SQL, in the database, before any row is loaded:
+     * an out-of-scope record never reaches PHP, let alone Blade.
+     *
+     * Soft-deleted (archived) records are excluded here, not in the
+     * controller, so no future listing path can forget the exclusion.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<Beneficiary>
+     */
+    public function scopeAccessibleTo(\Illuminate\Database\Eloquent\Builder $query, ?User $user): \Illuminate\Database\Eloquent\Builder
+    {
+        if ($user === null) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return ScopeAuthorization::applyBeneficiaryScope($user, $query);
     }
 
     public function assessments(): HasMany

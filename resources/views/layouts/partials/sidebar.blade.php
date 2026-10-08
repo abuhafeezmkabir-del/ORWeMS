@@ -15,16 +15,31 @@
         </a>
 
         <div class="sidebar-heading">Beneficiaries</div>
-        <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
-            <i class="bi bi-people"></i>
-            <span>All Beneficiaries</span>
-            <span class="badge bg-secondary ms-auto text-uppercase" style="font-size: 0.65rem;">Planned</span>
-        </a>
-        <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">
-            <i class="bi bi-person-plus"></i>
-            <span>Register Beneficiary</span>
-            <span class="badge bg-secondary ms-auto text-uppercase" style="font-size: 0.65rem;">Planned</span>
-        </a>
+        {{-- Shown only to operators who may read them; the routes enforce
+             permission:beneficiaries.* independently, so knowing the URL
+             without the permission yields a 403, not a different page. --}}
+        @can('beneficiaries.view')
+            <a href="{{ route('beneficiaries.index') }}" class="sidebar-link {{ request()->routeIs('beneficiaries.*') ? 'active' : '' }}">
+                <i class="bi bi-people"></i>
+                <span>All Beneficiaries</span>
+            </a>
+        @else
+            <a href="#" class="sidebar-link disabled" title="No access" tabindex="-1" aria-disabled="true">
+                <i class="bi bi-people"></i>
+                <span>All Beneficiaries</span>
+            </a>
+        @endcan
+        @can('beneficiaries.create')
+            <a href="{{ route('beneficiaries.create') }}" class="sidebar-link {{ request()->routeIs('beneficiaries.create') ? 'active' : '' }}">
+                <i class="bi bi-person-plus"></i>
+                <span>Register Beneficiary</span>
+            </a>
+        @else
+            <a href="#" class="sidebar-link disabled" title="No access" tabindex="-1" aria-disabled="true">
+                <i class="bi bi-person-plus"></i>
+                <span>Register Beneficiary</span>
+            </a>
+        @endcan
 
         <div class="sidebar-heading">Welfare Management</div>
         <a href="#" class="sidebar-link disabled" title="Planned module" tabindex="-1" aria-disabled="true">

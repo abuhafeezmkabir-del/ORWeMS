@@ -10,7 +10,7 @@ namespace App\Enums;
  * these strings, so an existing name is never renamed or reused for a different
  * meaning. New events are added as new cases.
  *
- * Cases marked "recorded" are written today by Phase 3D code. Cases marked
+ * Cases marked "recorded" are written today by ORWeMS code. Cases marked
  * "reserved" exist so the vocabulary is complete up front and a future phase
  * does not have to invent (or accidentally diverge) a name — they are NOT
  * written by any code yet, and the documentation says so plainly.
@@ -62,6 +62,18 @@ enum SecurityEvent: string
 
     /** A geographic scope was withdrawn (deactivated, not deleted). */
     case GeographicScopeRevoked = 'geographic_scope_revoked';
+
+    /** A beneficiary record was newly registered. */
+    case BeneficiaryCreated = 'beneficiary_created';
+
+    /** A beneficiary record was amended. */
+    case BeneficiaryUpdated = 'beneficiary_updated';
+
+    /** A beneficiary registration was confirmed against evidence. */
+    case BeneficiaryVerified = 'beneficiary_verified';
+
+    /** A beneficiary record left active view (soft-deleted, never destroyed). */
+    case BeneficiaryArchived = 'beneficiary_archived';
 
     /**
      * RESERVED — not written by any code today.

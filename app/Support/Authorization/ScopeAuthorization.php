@@ -4,6 +4,7 @@ namespace App\Support\Authorization;
 
 use App\Enums\GeographicScopeLevel;
 use App\Enums\ProgrammeStatus;
+use App\Models\Beneficiary;
 use App\Models\Community;
 use App\Models\LocalGovernmentArea;
 use App\Models\Programme;
@@ -11,6 +12,7 @@ use App\Models\State;
 use App\Models\User;
 use App\Models\UserGeographicScope;
 use App\Models\Ward;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -70,6 +72,82 @@ final class ScopeAuthorization
             ->where('programmes.id', $programmeId)
             ->where('programmes.status', ProgrammeStatus::Active->value)
             ->exists();
+    }
+
+    /**
+     * May this operator reach this beneficiary record?
+     *
+     * This is the Phase 4 composition of the two independent Phase 3C checks:
+     * the beneficiary's programme AND its geography. A beneficiary is expected
+     * to carry both dimensions, and the AND is what stops a Niger operator
+     * under programme A from reaching a Nasarawa record under programme A, or
+     * a Niger record under programme B. Where the record genuinely has only
+     * one dimension (`allowsScope()`), only that dimension is required.
+     *
+     * The geography check walks ancestors (see `allowsScope()`), so a record
+     * deeper than the granted level is IN scope — that is hierarchy, not
+     * widening.
+     *
+     * SCOPE ONLY. This answers WHERE, never WHAT: callers confirm the relevant
+     * `beneficiaries.*` permission first (the BeneficiaryPolicy does), and a
+     * perfect scope here confers nothing on an account that holds none.
+     */
+    public static function allowsBeneficiary(User $user, Beneficiary $beneficiary): bool
+    {
+        return self::allowsScope($user, $beneficiary->programme, $beneficiary->geography());
+    }
+
+    /**
+     * Restrict a beneficiary query to the records this operator may reach.
+     *
+     * This is the query half of `allowsBeneficiary()`, and it exists for one
+     * reason: the index page must never LOAD an out-of-scope record and merely
+     * hide it in the view. Hiding in Blade is a presentation decision; the
+     * rows must not leave the database. Both methods therefore share the same
+     * expansion logic (`expandedScopeIds()`), so the listing and the detail
+     * page cannot disagree about what "in scope" means.
+     *
+     * SQL shape: the geography predicate matches ANY of the record's
+     * geography columns against the corresponding expanded id set
+     * (state_id IN states OR lga_id IN lgas OR ...), and the programme
+     * predicate ANDs with it. An operator with no live assignments in a
+     * dimension gets `[0]` in that dimension's set — a placeholder that matches
+     * nothing rather than an empty IN list, which SQL treats unpredictably and
+     * which this code must never turn into "match everything".
+     *
+     * @param  Builder<Beneficiary>  $query
+     * @return Builder<Beneficiary>
+     */
+    public static function applyBeneficiaryScope(User $user, Builder $query): Builder
+    {
+        $programmeIds = $user->activeProgrammes()->pluck('programmes.id')->all();
+        $expanded = self::expandedScopeIds($user);
+
+        return $query
+            ->whereIn('programme_id', $programmeIds === [] ? [0] : $programmeIds)
+            ->where(function (Builder $query) use ($expanded): void {
+                $query->whereIn('country_id', $expanded['countries'])
+                    ->orWhereIn('state_id', $expanded['states'])
+                    ->orWhereIn('local_government_area_id', $expanded['lgas'])
+                    ->orWhereIn('ward_id', $expanded['wards'])
+                    ->orWhereIn('community_id', $expanded['communities']);
+            });
+    }
+
+    /**
+     * The expanded id sets, for form dropdowns.
+     *
+     * Presentation only: it limits the programme/geography OPTIONS shown on
+     * the registration form to areas the operator may actually use. The form
+     * request re-checks scope on submit, because a dropdown is never a
+     * control — this method only saves the operator from choosing something
+     * that would then be refused.
+     *
+     * @return array{countries: list<int>, states: list<int>, lgas: list<int>, wards: list<int>, communities: list<int>}
+     */
+    public static function expandedScopeIdsForForm(User $user): array
+    {
+        return self::expandedScopeIds($user);
     }
 
     /**
@@ -166,6 +244,124 @@ final class ScopeAuthorization
             ->get()
             ->map(static fn (UserGeographicScope $scope): string => $scope->level->value.':'.$scope->scopeId())
             ->all();
+    }
+
+    /**
+     * Every geographic id this operator's active scopes reach, by level.
+     *
+     * This is the expansion both `allowsGeography()` and `applyBeneficiaryScope()`
+     * read from, which is what keeps the row-level check and the listing query
+     * from disagreeing. A scope is expanded DOWNWARD through live geography
+     * rows: a state contributes the state itself, every LGA beneath it, and so
+     * on to every community. Expansion reads the hierarchy as it stands now,
+     * so moving a ward moves every dependent decision with it — no stored
+     * copies to go stale.
+     *
+     * Each set always contains at least the `[0]` placeholder (which matches
+     * nothing), for the reason documented on `applyBeneficiaryScope()`.
+     *
+     * @return array{countries: list<int>, states: list<int>, lgas: list<int>, wards: list<int>, communities: list<int>}
+     */
+    private static function expandedScopeIds(User $user): array
+    {
+        $expanded = [
+            'countries' => [0],
+            'states' => [0],
+            'lgas' => [0],
+            'wards' => [0],
+            'communities' => [0],
+        ];
+
+        foreach ($user->activeGeographicScopes()->get() as $scope) {
+            $level = $scope->level;
+            $id = $scope->scopeId();
+
+            match ($level) {
+                GeographicScopeLevel::Country => self::expandCountry($id, $expanded),
+                GeographicScopeLevel::State => self::expandState($id, $expanded),
+                GeographicScopeLevel::Lga => self::expandLga($id, $expanded),
+                GeographicScopeLevel::Ward => self::expandWard($id, $expanded),
+                GeographicScopeLevel::Community => self::expandCommunity($id, $expanded),
+            };
+        }
+
+        return $expanded;
+    }
+
+    /**
+     * Add one id to one expansion set, de-duplicated.
+     *
+     * @param  array{countries: list<int>, states: list<int>, lgas: list<int>, wards: list<int>, communities: list<int>}  $expanded
+     */
+    private static function addExpandedId(array &$expanded, string $set, int|string $id): void
+    {
+        $id = (int) $id;
+
+        if (! in_array($id, $expanded[$set], true)) {
+            $expanded[$set][] = $id;
+        }
+    }
+
+    /**
+     * @param  array{countries: list<int>, states: list<int>, lgas: list<int>, wards: list<int>, communities: list<int>}  $expanded
+     */
+    private static function expandCountry(int|string $countryId, array &$expanded): void
+    {
+        self::addExpandedId($expanded, 'countries', $countryId);
+
+        foreach (State::query()->where('country_id', $countryId)->pluck('id') as $stateId) {
+            self::expandState($stateId, $expanded);
+        }
+    }
+
+    /**
+     * @param  array{countries: list<int>, states: list<int>, lgas: list<int>, wards: list<int>, communities: list<int>}  $expanded
+     */
+    private static function expandState(int|string $stateId, array &$expanded): void
+    {
+        self::addExpandedId($expanded, 'states', $stateId);
+
+        foreach (LocalGovernmentArea::query()->where('state_id', $stateId)->pluck('id') as $lgaId) {
+            self::expandLga($lgaId, $expanded);
+        }
+    }
+
+    /**
+     * @param  array{countries: list<int>, states: list<int>, lgas: list<int>, wards: list<int>, communities: list<int>}  $expanded
+     */
+    private static function expandLga(int|string $lgaId, array &$expanded): void
+    {
+        self::addExpandedId($expanded, 'lgas', $lgaId);
+
+        foreach (Ward::query()->where('local_government_area_id', $lgaId)->pluck('id') as $wardId) {
+            self::expandWard($wardId, $expanded);
+        }
+
+        // Settlements with no formal ward resolve through their LGA
+        // (Phase 2): they must be picked up here, not only via expandWard().
+        foreach (Community::query()->where('local_government_area_id', $lgaId)->pluck('id') as $communityId) {
+            self::addExpandedId($expanded, 'communities', $communityId);
+        }
+    }
+
+    /**
+     * @param  array{countries: list<int>, states: list<int>, lgas: list<int>, wards: list<int>, communities: list<int>}  $expanded
+     */
+    private static function expandWard(int|string $wardId, array &$expanded): void
+    {
+        self::addExpandedId($expanded, 'wards', $wardId);
+
+        foreach (Community::query()->where('ward_id', $wardId)->pluck('id') as $communityId) {
+            self::addExpandedId($expanded, 'communities', $communityId);
+        }
+    }
+
+    /**
+     * @param  array{countries: list<int>, states: list<int>, lgas: list<int>, wards: list<int>, communities: list<int>}  $expanded
+     */
+    private static function expandCommunity(int|string $communityId, array &$expanded): void
+    {
+        self::addExpandedId($expanded, 'communities', $communityId);
     }
 
     /**

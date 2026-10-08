@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BeneficiaryController;
 use App\Http\Controllers\RoleAdministrationController;
 use Illuminate\Support\Facades\Route;
 
@@ -82,5 +83,77 @@ Route::middleware(['auth', 'account.active', 'password.fresh'])
         Route::post('/roles/{role}/assign', [RoleAdministrationController::class, 'assignToUser'])
             ->middleware('permission:users.assign_roles')
             ->name('roles.assign');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Beneficiary Management (Phase 4)
+|--------------------------------------------------------------------------
+|
+| The first real humanitarian workflow: register, view, update, verify and
+| archive beneficiaries. The middleware stack on each route is the same
+| deliberate order documented above (WHO → WHETHER → FRESHNESS → WHAT), with
+| one addition: the controller authorizes per-record through
+| BeneficiaryPolicy, which adds WHERE (programme + geographic scope).
+|
+| Binding resolves by beneficiary_ref (getRouteKeyName on the model is NOT
+| used — that would change every implicit binding globally; the `:{column}`
+| syntax scopes it to these routes). Internal ids never appear in URLs.
+|
+| There is deliberately no DELETE route. Archiving (soft-delete) is the
+| terminal action, and it runs through a confirm screen + POST.
+*/
+
+Route::middleware(['auth', 'account.active', 'password.fresh'])
+    ->prefix('beneficiaries')
+    ->name('beneficiaries.')
+    ->group(function () {
+        // Binding must RESOLVE archived rows (`withTrashed`) so the policy's
+        // trashed() guards can answer 403: without it, implicit binding on the
+        // SoftDeletes model 404s before authorization runs, and "archived
+        // records are refused, not missing" would be untestable. The policy
+        // still refuses update/verify/archive on trashed rows; only `view`
+        // passes, which is correct — archived records are read-only evidence.
+        Route::get('/', [BeneficiaryController::class, 'index'])
+            ->middleware('permission:beneficiaries.view')
+            ->name('index');
+
+        Route::get('/create', [BeneficiaryController::class, 'create'])
+            ->middleware('permission:beneficiaries.create')
+            ->name('create');
+
+        Route::post('/', [BeneficiaryController::class, 'store'])
+            ->middleware('permission:beneficiaries.create')
+            ->name('store');
+
+        Route::get('/{beneficiary:beneficiary_ref}', [BeneficiaryController::class, 'show'])
+            ->middleware('permission:beneficiaries.view')
+            ->withTrashed()
+            ->name('show');
+
+        Route::get('/{beneficiary:beneficiary_ref}/edit', [BeneficiaryController::class, 'edit'])
+            ->middleware('permission:beneficiaries.update')
+            ->withTrashed()
+            ->name('edit');
+
+        Route::put('/{beneficiary:beneficiary_ref}', [BeneficiaryController::class, 'update'])
+            ->middleware('permission:beneficiaries.update')
+            ->withTrashed()
+            ->name('update');
+
+        Route::post('/{beneficiary:beneficiary_ref}/verify', [BeneficiaryController::class, 'verify'])
+            ->middleware('permission:beneficiaries.verify')
+            ->withTrashed()
+            ->name('verify');
+
+        Route::get('/{beneficiary:beneficiary_ref}/archive', [BeneficiaryController::class, 'archive'])
+            ->middleware('permission:beneficiaries.archive')
+            ->withTrashed()
+            ->name('archive');
+
+        Route::post('/{beneficiary:beneficiary_ref}/archive', [BeneficiaryController::class, 'confirmArchive'])
+            ->middleware('permission:beneficiaries.archive')
+            ->withTrashed()
+            ->name('archive.confirm');
     });
 

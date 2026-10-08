@@ -9,7 +9,9 @@ use App\Listeners\AuditLogout;
 use App\Listeners\AuditPasswordReset;
 use App\Listeners\LogoutOtherSessionsAfterPasswordReset;
 use App\Listeners\RecordLastLoginAt;
+use App\Models\Beneficiary;
 use App\Models\User;
+use App\Policies\BeneficiaryPolicy;
 use App\Support\Authorization\PermissionCatalog;
 use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Auth\Events\Failed;
@@ -108,5 +110,16 @@ class AppServiceProvider extends ServiceProvider
 
             return $user->hasPermission($ability);
         });
+
+        // Phase 4 — the first domain policy.
+        //
+        // Gate::before() above answers only *permission-code* abilities and
+        // returns null for everything else, so a class-name ability such as
+        // `view` on a Beneficiary falls through to the policy untouched. That
+        // fall-through is what this registration relies on: `Gate::policy()`
+        // binds the class to its policy, and the controller authorizes
+        // `$this->authorize('view', $beneficiary)` — never the permission code
+        // directly, so the check is always permission AND scope together.
+        Gate::policy(Beneficiary::class, BeneficiaryPolicy::class);
     }
 }
