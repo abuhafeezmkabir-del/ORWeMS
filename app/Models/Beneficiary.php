@@ -236,4 +236,27 @@ class Beneficiary extends Model
             ->with(['careArrangementType', 'household', 'caregiverPerson'])
             ->first();
     }
+
+    /**
+     * The child's education history (Phase 6A), ASC start_date for history
+     * rendering. An append log. "Current" is derived (see
+     * currentEnrolment()) rather than a separate relation, so the two can
+     * never disagree.
+     */
+    public function enrolments(): HasMany
+    {
+        return $this->hasMany(EducationEnrolment::class)->orderBy('start_date')->orderBy('id');
+    }
+
+    /**
+     * The enrolment the child is in right now, or null when between enrolments
+     * or when none has ever been recorded.
+     */
+    public function currentEnrolment(): ?EducationEnrolment
+    {
+        return $this->enrolments()
+            ->whereNull('end_date')
+            ->with(['educationLevel', 'institution'])
+            ->first();
+    }
 }

@@ -38,11 +38,11 @@ use Illuminate\Database\Seeder;
  * concern, not Phase 3B's.
  *
  * Only families that map to something ORWeMS actually has are defined. Families
- * whose permissions would be pure invention — education and health — are
- * absent until those modules exist; the care/placement family was added in
- * Phase 5 alongside the module that gave it meaning. The catalogue is a plain
- * table, so adding `health.*` when the health module is built is additive and
- * needs no migration.
+ * whose permissions would be pure invention — health — are absent until that
+ * module exists; the care/placement family was added in Phase 5 alongside the
+ * module that gave it meaning, and the education family in Phase 6A. The
+ * catalogue is a plain table, so adding `health.*` when the health module is
+ * built is additive and needs no migration.
  *
  * The catalogue is defined as DATA rather than as code so that an administrator
  * can extend it, and so a test can assert the exact intended size instead of
@@ -120,6 +120,17 @@ class PermissionSeeder extends Seeder
             ['code' => 'placements.create', 'name' => 'Record care placements', 'description' => 'Open a new care placement record for a child.'],
             ['code' => 'placements.update', 'name' => 'Edit care placements', 'description' => 'Amend the substance of an active care placement.'],
             ['code' => 'placements.close', 'name' => 'Close care placements', 'description' => 'End an active care placement with a dated closure.'],
+
+            // --- Education (Phase 6A) -------------------------------------------
+            // The education-history family. `close` exists for the same reason it
+            // does for placements, needs and interventions: ending an enrolment
+            // is a distinct domain decision, separable from editing one, so the
+            // person who runs the case is not automatically the person who
+            // decides when it stopped.
+            ['code' => 'education.view', 'name' => 'View education history', 'description' => 'See a child’s current enrolment and education history.'],
+            ['code' => 'education.create', 'name' => 'Record education enrolments', 'description' => 'Open a new education enrolment record for a child.'],
+            ['code' => 'education.update', 'name' => 'Edit education enrolments', 'description' => 'Amend the substance of a current education enrolment.'],
+            ['code' => 'education.close', 'name' => 'Close education enrolments', 'description' => 'End a current education enrolment with a dated closure.'],
 
             // --- Assessment ----------------------------------------------------
             ['code' => 'assessments.view', 'name' => 'View assessments', 'description' => 'See completed and in-progress welfare assessments.'],

@@ -106,4 +106,13 @@ enum SecurityEvent: string
 
     /** A recorded relationship was ended by setting its end date (Phase 5). */
     case BeneficiaryRelationshipUpdated = 'beneficiary_relationship_updated';
+
+    /** An education enrolment record was opened for a beneficiary (Phase 6A). */
+    case EducationEnrolmentCreated = 'education_enrolment_created';
+
+    /** A CURRENT education enrolment was amended (Phase 6A) — never a closed one. */
+    case EducationEnrolmentUpdated = 'education_enrolment_updated';
+
+    /** An education enrolment was closed with an end date; the history row remains. */
+    case EducationEnrolmentClosed = 'education_enrolment_closed';
 }

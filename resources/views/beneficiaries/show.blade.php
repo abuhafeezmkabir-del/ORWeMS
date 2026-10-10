@@ -196,6 +196,50 @@
             </div>
         @endisset
 
+        @isset($enrolments)
+            <div class="col-12 col-lg-5">
+                <x-card title="Education history" subtitle="Where this child studies now, and where they have studied" class="mb-4">
+                    @if ($enrolments->isEmpty())
+                        <p class="small text-muted mb-3">No education records have been recorded for this child.</p>
+                    @else
+                        <ul class="list-group list-group-flush small mb-3">
+                            @foreach ($enrolments as $enrolment)
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-start gap-3">
+                                    <div>
+                                        <div class="fw-semibold text-dark">
+                                            {{ $enrolment->institution_name }}
+                                            <span class="fw-normal text-muted">— {{ $enrolment->educationLevel?->name ?? '—' }}</span>
+                                        </div>
+                                        <div class="text-muted fst-italic">
+                                            since {{ $enrolment->start_date?->format('d M Y') }}
+                                            @if ($enrolment->end_date !== null)
+                                                — ended {{ $enrolment->end_date->format('d M Y') }}
+                                            @endif
+                                        </div>
+                                    </div>
+                                    @if ($enrolment->isCurrent())
+                                        <x-badge variant="success" :pill="true">Current</x-badge>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                    <div class="d-flex gap-2">
+                        @can('viewFor', [\App\Models\EducationEnrolment::class, $beneficiary])
+                            <x-button variant="outline-primary" size="sm" icon="bi-mortarboard" :href="route('beneficiaries.education.index', $beneficiary)">
+                                Full education history
+                            </x-button>
+                        @endcan
+                        @can('create', [\App\Models\EducationEnrolment::class, $beneficiary])
+                            <x-button variant="outline-success" size="sm" icon="bi-mortarboard-fill" :href="route('beneficiaries.education.create', $beneficiary)">
+                                Record enrolment
+                            </x-button>
+                        @endcan
+                    </div>
+                </x-card>
+            </div>
+        @endisset
+
         @isset($relationships)
             <div class="col-12 col-lg-7">
                 <x-card title="Family & guardians" subtitle="Recorded relationships for this child">

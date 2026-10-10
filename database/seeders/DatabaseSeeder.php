@@ -35,6 +35,9 @@ class DatabaseSeeder extends Seeder
             RelationshipTypeSeeder::class,
             // Phase 5 — the care arrangement vocabulary (reference data).
             CareArrangementTypeSeeder::class,
+            // Phase 6A — the education level vocabulary (reference data).
+            // Institutions are deliberately NOT seeded (see Institution model).
+            EducationLevelSeeder::class,
             NeedCategorySeeder::class,
             InterventionTypeSeeder::class,
         ]);

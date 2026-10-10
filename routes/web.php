@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BeneficiaryController;
 use App\Http\Controllers\BeneficiaryRelationshipController;
+use App\Http\Controllers\EducationController;
 use App\Http\Controllers\PlacementController;
 use App\Http\Controllers\RoleAdministrationController;
 use Illuminate\Support\Facades\Route;
@@ -252,5 +253,80 @@ Route::middleware(['auth', 'account.active', 'password.fresh'])
             ->middleware('permission:relationships.update')
             ->withTrashed()
             ->name('relationships.end.confirm');
+    });
+
+/*
+|--------------------------------------------------------------------------|
+| Education Management (Phase 6A)
+|--------------------------------------------------------------------------|
+|
+| Nested under each beneficiary because an education enrolment IS case
+| content of the child it describes: it has no existence apart from the case
+| file, and it inherits that file's scope. The middleware order is the same
+| WHO → WHETHER → FRESHNESS → WHAT stack as Phase 4/5, and the `:{column}`
+| binding + withTrashed() mirror it exactly — an archived beneficiary's
+| history resolves and is answered by the policy (403 for writes, view for
+| reads), never by a 404 that would pretend the record is missing.
+|
+| Nested {enrolment} bindings additionally check that the child in the URL
+| owns the record (404 otherwise): a cross-record id in a URL is a mistake,
+| and 403 would confirm the id exists.
+|
+| There is deliberately no DELETE route — not for enrolments. Closing (a
+| dated, reasoned, audited state change) is the terminal action for education
+| history, because education history is evidence. "Current" is derived from
+| end_date IS NULL, never a stored status that could drift.
+*/
+Route::middleware(['auth', 'account.active', 'password.fresh'])
+    ->prefix('beneficiaries')
+    ->name('beneficiaries.')
+    ->group(function () {
+        Route::get('/{beneficiary:beneficiary_ref}/education', [EducationController::class, 'index'])
+            ->middleware('permission:education.view')
+            ->withTrashed()
+            ->name('education.index');
+
+        Route::get('/{beneficiary:beneficiary_ref}/education/create', [EducationController::class, 'create'])
+            ->middleware('permission:education.create')
+            ->withTrashed()
+            ->name('education.create');
+
+        Route::post('/{beneficiary:beneficiary_ref}/education', [EducationController::class, 'store'])
+            ->middleware('permission:education.create')
+            ->withTrashed()
+            ->name('education.store');
+
+        // Change = close current + open next, one POST, one transaction.
+        // Gated by education.create (the opening half); the policy re-checks
+        // education.close on the existing row inside the controller.
+        Route::get('/{beneficiary:beneficiary_ref}/education/change', [EducationController::class, 'change'])
+            ->middleware('permission:education.create')
+            ->withTrashed()
+            ->name('education.change');
+
+        Route::post('/{beneficiary:beneficiary_ref}/education/change', [EducationController::class, 'storeChange'])
+            ->middleware('permission:education.create')
+            ->withTrashed()
+            ->name('education.change.store');
+
+        Route::get('/{beneficiary:beneficiary_ref}/education/{enrolment}/edit', [EducationController::class, 'edit'])
+            ->middleware('permission:education.update')
+            ->withTrashed()
+            ->name('education.edit');
+
+        Route::put('/{beneficiary:beneficiary_ref}/education/{enrolment}', [EducationController::class, 'update'])
+            ->middleware('permission:education.update')
+            ->withTrashed()
+            ->name('education.update');
+
+        Route::get('/{beneficiary:beneficiary_ref}/education/{enrolment}/close', [EducationController::class, 'close'])
+            ->middleware('permission:education.close')
+            ->withTrashed()
+            ->name('education.close');
+
+        Route::post('/{beneficiary:beneficiary_ref}/education/{enrolment}/close', [EducationController::class, 'confirmClose'])
+            ->middleware('permission:education.close')
+            ->withTrashed()
+            ->name('education.close.confirm');
     });
 

@@ -95,6 +95,10 @@ class RolePermissionSeeder extends Seeder
                 // history and closes arrangements (the separation-of-duties
                 // action on a placement), but does not open or edit them.
                 'placements.view', 'placements.close',
+                // Education history follows the same oversight shape: the
+                // manager SEES it and closes an enrolment, but does not open
+                // or amend one — that is casework.
+                'education.view', 'education.close',
                 'assessments.view', 'assessments.approve',
                 'needs.view', 'needs.close',
                 'interventions.view', 'interventions.close',
@@ -117,6 +121,11 @@ class RolePermissionSeeder extends Seeder
                 // the POLICY refuses amending a closed placement, so "edit
                 // the history" is not a power this role (or any role) holds.
                 'placements.view', 'placements.create', 'placements.update', 'placements.close',
+                // End-to-end education casework: record, amend while current,
+                // close. The close/update split still binds inside the role —
+                // the POLICY refuses amending a closed enrolment, so "edit
+                // the history" is not a power this role (or any role) holds.
+                'education.view', 'education.create', 'education.update', 'education.close',
                 'assessments.view', 'assessments.create', 'assessments.update',
                 'needs.view', 'needs.create', 'needs.update',
                 'interventions.view', 'interventions.create', 'interventions.update',
@@ -135,8 +144,11 @@ class RolePermissionSeeder extends Seeder
                 // Placement HISTORY is visible at intake (knowing where a
                 // child currently lives matters to every conversation), but
                 // recording, editing and closing placements are casework —
-                // deliberately absent here.
+                // deliberately absent here. Education history is visible for
+                // the same reason (a child's schooling is core intake
+                // context); writing it is casework.
                 'placements.view',
+                'education.view',
                 'documents.view', 'documents.upload',
                 'programmes.view',
             ],
@@ -152,6 +164,10 @@ class RolePermissionSeeder extends Seeder
                 // Assessment is done WITH the care context in view — a
                 // child's current arrangement is standard assessment input.
                 'placements.view',
+                // Education history is standard assessment input too (school
+                // attendance and level shape a welfare picture); assessing is
+                // not recording it.
+                'education.view',
                 'assessments.view', 'assessments.create', 'assessments.update',
                 'needs.view', 'needs.create', 'needs.update',
                 'interventions.view',
@@ -181,13 +197,23 @@ class RolePermissionSeeder extends Seeder
     | Recorded so the catalogue can be reviewed rather than merely trusted.
     |
     | education_officer / health_officer
-    |     ORWeMS will need sector officers, but there is no education or health
-    |     module yet: no model, no controller, no route. Creating the roles now
-    |     would mean inventing permissions (`education.case_notes.view`) for
-    |     screens that cannot exist, and would leave a plausible-looking role
-    |     that grants nothing and appears to be broken. The permission model
-    |     supports them without change when the modules are built — and because
-    |     roles carry no location, one `health_officer` will serve every state.
+    |     ORWeMS will need sector officers, but there is still no health module:
+    |     no model, no controller, no route. Creating a health_officer role now
+    |     would mean inventing permissions (`health.case_notes.view`) for screens
+    |     that cannot exist, and would leave a plausible-looking role that grants
+    |     nothing and appears to be broken. The permission model supports it
+    |     without change when the module is built — and because roles carry no
+    |     location, one `health_officer` will serve every state.
+    |
+    |     As of Phase 6A the EDUCATION module exists, so the reason no longer
+    |     applies to education. An `education_officer` role was still not seeded,
+    |     deliberately: the four `education.*` permissions are mapped onto the
+    |     existing casework roles (case_officer holds them end to end;
+    |     programme_manager oversees and closes; intake/assessor view). Adding a
+    |     separate education_officer now would duplicate case_officer's education
+    |     slice under a second name, and duplicate roles are how privilege drift
+    |     starts. WICHOV can split a dedicated sector officer out later, once it
+    |     is a real post, using the same permission codes.
     |
     | research_analyst
     |     ORWeMS is also a PhD research platform, and a research role is

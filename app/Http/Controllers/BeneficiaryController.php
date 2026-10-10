@@ -5,6 +5,7 @@ use App\Enums\SecurityEvent;
 use App\Http\Requests\StoreBeneficiaryRequest;
 use App\Models\Beneficiary;
 use App\Models\Community;
+use App\Models\EducationEnrolment;
 use App\Models\LocalGovernmentArea;
 use App\Models\PersonRelationship;
 use App\Models\Placement;
@@ -191,6 +192,20 @@ class BeneficiaryController extends Controller
                 ->orderByDesc('start_date')
                 ->orderByDesc('id')
                 ->get();
+        }
+
+        if (Gate::forUser($user)->allows('viewFor', [EducationEnrolment::class, $beneficiary])) {
+            $enrolments = $beneficiary->enrolments()
+                ->with([
+                    'educationLevel:id,code,name,sort_order',
+                    'institution:id,code,name',
+                ])
+                ->get();
+
+            $data['enrolments'] = $enrolments;
+            $data['currentEnrolment'] = $enrolments->first(
+                fn (EducationEnrolment $enrolment): bool => $enrolment->isCurrent()
+            );
         }
 
         $household = $beneficiary->household;

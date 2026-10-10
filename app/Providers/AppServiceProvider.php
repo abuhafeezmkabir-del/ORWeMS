@@ -10,10 +10,12 @@ use App\Listeners\AuditPasswordReset;
 use App\Listeners\LogoutOtherSessionsAfterPasswordReset;
 use App\Listeners\RecordLastLoginAt;
 use App\Models\Beneficiary;
+use App\Models\EducationEnrolment;
 use App\Models\PersonRelationship;
 use App\Models\Placement;
 use App\Models\User;
 use App\Policies\BeneficiaryPolicy;
+use App\Policies\EducationEnrolmentPolicy;
 use App\Policies\PersonRelationshipPolicy;
 use App\Policies\PlacementPolicy;
 use App\Support\Authorization\PermissionCatalog;
@@ -133,5 +135,11 @@ class AppServiceProvider extends ServiceProvider
         // WHICH policy answers, never what it answers.
         Gate::policy(Placement::class, PlacementPolicy::class);
         Gate::policy(PersonRelationship::class, PersonRelationshipPolicy::class);
+
+        // Phase 6A — education history policy, bound to the same fall-through.
+        // EducationEnrolmentPolicy answers against the enrolment's BENEFICIARY
+        // scope, exactly like PlacementPolicy. The binding only says WHICH
+        // policy answers, never what it answers.
+        Gate::policy(EducationEnrolment::class, EducationEnrolmentPolicy::class);
     }
 }
