@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\BeneficiaryController;
+use App\Http\Controllers\BeneficiaryRelationshipController;
+use App\Http\Controllers\PlacementController;
 use App\Http\Controllers\RoleAdministrationController;
 use Illuminate\Support\Facades\Route;
 
@@ -155,5 +157,100 @@ Route::middleware(['auth', 'account.active', 'password.fresh'])
             ->middleware('permission:beneficiaries.archive')
             ->withTrashed()
             ->name('archive.confirm');
+    });
+
+/*
+|--------------------------------------------------------------------------|
+| Care, Family & Placement Management (Phase 5)
+|--------------------------------------------------------------------------|
+|
+| Nested under each beneficiary because a placement or a relationship IS
+| case content of the child it describes: it has no existence apart from
+| the case file, and it inherits that file's scope. The middleware order is
+| the same WHO → WHETHER → FRESHNESS → WHAT stack as Phase 4, and the
+| `:{column}` binding + withTrashed() mirror it exactly — an archived
+| beneficiary's history resolves and is answered by the policy (403 for
+| writes, view for reads), never by a 404 that would pretend the record is
+| missing.
+|
+| Nested {placement} / {relationship} bindings additionally check that the
+| child in the URL owns the record (404 otherwise): a cross-record id in a
+| URL is a mistake, and 403 would confirm the id exists.
+|
+| There is deliberately no DELETE route — not for placements, not for
+| relationships. Closing (a dated, reasoned, audited state change) is the
+| terminal action for care history, because care history is evidence.
+*/
+Route::middleware(['auth', 'account.active', 'password.fresh'])
+    ->prefix('beneficiaries')
+    ->name('beneficiaries.')
+    ->group(function () {
+        Route::get('/{beneficiary:beneficiary_ref}/placements', [PlacementController::class, 'index'])
+            ->middleware('permission:placements.view')
+            ->withTrashed()
+            ->name('placements.index');
+
+        Route::get('/{beneficiary:beneficiary_ref}/placements/create', [PlacementController::class, 'create'])
+            ->middleware('permission:placements.create')
+            ->withTrashed()
+            ->name('placements.create');
+
+        Route::post('/{beneficiary:beneficiary_ref}/placements', [PlacementController::class, 'store'])
+            ->middleware('permission:placements.create')
+            ->withTrashed()
+            ->name('placements.store');
+
+        // Change = close current + open next, one POST, one transaction.
+        // Gated by placements.create (the opening half); the policy re-checks
+        // placements.close on the existing row inside the controller.
+        Route::get('/{beneficiary:beneficiary_ref}/placements/change', [PlacementController::class, 'change'])
+            ->middleware('permission:placements.create')
+            ->withTrashed()
+            ->name('placements.change');
+
+        Route::post('/{beneficiary:beneficiary_ref}/placements/change', [PlacementController::class, 'storeChange'])
+            ->middleware('permission:placements.create')
+            ->withTrashed()
+            ->name('placements.change.store');
+
+        Route::get('/{beneficiary:beneficiary_ref}/placements/{placement}/edit', [PlacementController::class, 'edit'])
+            ->middleware('permission:placements.update')
+            ->withTrashed()
+            ->name('placements.edit');
+
+        Route::put('/{beneficiary:beneficiary_ref}/placements/{placement}', [PlacementController::class, 'update'])
+            ->middleware('permission:placements.update')
+            ->withTrashed()
+            ->name('placements.update');
+
+        Route::get('/{beneficiary:beneficiary_ref}/placements/{placement}/close', [PlacementController::class, 'close'])
+            ->middleware('permission:placements.close')
+            ->withTrashed()
+            ->name('placements.close');
+
+        Route::post('/{beneficiary:beneficiary_ref}/placements/{placement}/close', [PlacementController::class, 'confirmClose'])
+            ->middleware('permission:placements.close')
+            ->withTrashed()
+            ->name('placements.close.confirm');
+
+        Route::get('/{beneficiary:beneficiary_ref}/relationships/create', [BeneficiaryRelationshipController::class, 'create'])
+            ->middleware('permission:relationships.create')
+            ->withTrashed()
+            ->name('relationships.create');
+
+        Route::post('/{beneficiary:beneficiary_ref}/relationships', [BeneficiaryRelationshipController::class, 'store'])
+            ->middleware('permission:relationships.create')
+            ->withTrashed()
+            ->name('relationships.store');
+
+        Route::get('/{beneficiary:beneficiary_ref}/relationships/{relationship}/end', [BeneficiaryRelationshipController::class, 'end'])
+            ->middleware('permission:relationships.update')
+            ->withTrashed()
+            ->name('relationships.end');
+
+        Route::post('/{beneficiary:beneficiary_ref}/relationships/{relationship}/end', [BeneficiaryRelationshipController::class, 'confirmEnd'])
+            ->middleware('permission:relationships.update')
+            ->withTrashed()
+            ->name('relationships.end.confirm');
     });
 

@@ -212,4 +212,28 @@ class Beneficiary extends Model
     {
         return $this->morphMany(Document::class, 'documentable');
     }
+
+    /**
+     * Every care placement this child has had, oldest first (Phase 5).
+     *
+     * Ordered by date rather than id: the history reads as a life, not as
+     * an append log. "Current" is derived (see currentPlacement()) rather
+     * than a separate relation, so the two can never disagree.
+     */
+    public function placements(): HasMany
+    {
+        return $this->hasMany(Placement::class)->orderBy('start_date')->orderBy('id');
+    }
+
+    /**
+     * The arrangement the child is in right now, or null when between
+     * placements or when no placement has ever been recorded.
+     */
+    public function currentPlacement(): ?Placement
+    {
+        return $this->placements()
+            ->whereNull('end_date')
+            ->with(['careArrangementType', 'household', 'caregiverPerson'])
+            ->first();
+    }
 }

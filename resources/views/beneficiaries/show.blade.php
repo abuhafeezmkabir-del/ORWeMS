@@ -104,4 +104,175 @@
             </x-card>
         </div>
     </div>
+
+    {{-- Phase 5 — care, family & placement context. Every section renders only
+         when the controller loaded it, i.e. only for operators whose
+         permission AND scope reach the underlying rows. --}}
+    <div class="row g-4 mt-1">
+        @isset($currentPlacement)
+            <div class="col-12 col-lg-7">
+                <x-card title="Current care arrangement">
+                    <dl class="row mb-3 small">
+                        <dt class="col-sm-4 text-muted">Arrangement</dt>
+                        <dd class="col-sm-8 fw-semibold text-dark">{{ $currentPlacement->careArrangementType?->name ?? 'Not recorded' }}</dd>
+                        <dt class="col-sm-4 text-muted">Since</dt>
+                        <dd class="col-sm-8">{{ $currentPlacement->start_date?->format('d M Y') }}</dd>
+                        <dt class="col-sm-4 text-muted">Household</dt>
+                        <dd class="col-sm-8">
+                            @if ($currentPlacement->household)
+                                <code>{{ $currentPlacement->household->household_code }}</code> {{ $currentPlacement->household->household_name }}
+                            @else
+                                —
+                            @endif
+                        </dd>
+                        <dt class="col-sm-4 text-muted">Primary caregiver</dt>
+                        <dd class="col-sm-8">
+                            {{ trim(($currentPlacement->caregiverPerson?->first_name ?? '').' '.($currentPlacement->caregiverPerson?->last_name ?? '')) ?: '—' }}
+                        </dd>
+                        <dt class="col-sm-4 text-muted">Reason recorded</dt>
+                        <dd class="col-sm-8">{{ $currentPlacement->placement_reason ?? '—' }}</dd>
+                    </dl>
+                    <div class="d-flex gap-2">
+                        @can('close', $currentPlacement)
+                            <x-button variant="outline-warning" size="sm" icon="bi-arrow-repeat" :href="route('beneficiaries.placements.change', $beneficiary)">
+                                Change placement
+                            </x-button>
+                            <x-button variant="outline-secondary" size="sm" icon="bi-door-closed" :href="route('beneficiaries.placements.close', [$beneficiary, $currentPlacement])">
+                                Close placement
+                            </x-button>
+                        @endcan
+                        @can('update', $currentPlacement)
+                            <x-button variant="outline-secondary" size="sm" icon="bi-pencil" :href="route('beneficiaries.placements.edit', [$beneficiary, $currentPlacement])">
+                                Amend
+                            </x-button>
+                        @endcan
+                    </div>
+                </x-card>
+            </div>
+        @elseisset($placements)
+            <div class="col-12 col-lg-7">
+                <x-card title="Current care arrangement">
+                    <p class="small text-muted mb-3">
+                        No active placement is recorded for this child.
+                    </p>
+                    @can('create', [\App\Models\Placement::class, $beneficiary])
+                        <x-button variant="outline-success" size="sm" icon="bi-house-add" :href="route('beneficiaries.placements.create', $beneficiary)">
+                            Record placement
+                        </x-button>
+                    @endcan
+                </x-card>
+            </div>
+        @endisset
+
+        @isset($placements)
+            <div class="col-12 col-lg-5">
+                <x-card title="Placement history" subtitle="Closed arrangements remain — history is evidence">
+                    @if ($placements->isEmpty())
+                        <p class="small text-muted mb-0">No placements have been recorded.</p>
+                    @else
+                        <ul class="list-group list-group-flush small">
+                            @foreach ($placements as $placement)
+                                <li class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between">
+                                        <span class="fw-semibold text-dark">{{ $placement->careArrangementType?->name ?? '—' }}</span>
+                                        <x-badge :variant="$placement->isActive() ? 'success' : 'secondary'">
+                                            {{ $placement->isActive() ? 'Current' : 'Previous' }}
+                                        </x-badge>
+                                    </div>
+                                    <div class="text-muted">
+                                        {{ $placement->start_date?->format('d M Y') }} —
+                                        {{ $placement->end_date?->format('d M Y') ?? 'present' }}
+                                    </div>
+                                </li>
+                            @endforeach
+                        </ul>
+                        <div class="mt-3">
+                            <x-button variant="outline-secondary" size="sm" icon="bi-clock-history" :href="route('beneficiaries.placements.index', $beneficiary)">
+                                Full placement history
+                            </x-button>
+                        </div>
+                    @endif
+                </x-card>
+            </div>
+        @endisset
+
+        @isset($relationships)
+            <div class="col-12 col-lg-7">
+                <x-card title="Family & guardians" subtitle="Recorded relationships for this child">
+                    @if ($relationships->isEmpty())
+                        <p class="small text-muted mb-3">No relationships have been recorded.</p>
+                    @else
+                        <ul class="list-group list-group-flush small mb-3">
+                            @foreach ($relationships as $relationship)
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <span class="fw-semibold text-dark">{{ $relationship->relationshipType?->name ?? '—' }}</span>
+                                        <div class="text-muted">
+                                            @if ((int) $relationship->related_beneficiary_id === (int) $beneficiary->getKey())
+                                                {{ trim(($relationship->person?->first_name ?? '').' '.($relationship->person?->last_name ?? '')) ?: 'Unidentified person' }}
+                                            @elseif ($relationship->related_beneficiary_id !== null)
+                                                {{ trim(($relationship->relatedBeneficiary?->first_name ?? '').' '.($relationship->relatedBeneficiary?->last_name ?? '')) }}
+                                                <code>{{ $relationship->relatedBeneficiary?->beneficiary_ref }}</code>
+                                            @else
+                                                {{ trim(($relationship->relatedPerson?->first_name ?? '').' '.($relationship->relatedPerson?->last_name ?? '')) }}
+                                            @endif
+                                        </div>
+                                        <div class="text-muted fst-italic">
+                                            since {{ $relationship->start_date?->format('d M Y') }}
+                                            @if ($relationship->end_date !== null)
+                                                — ended {{ $relationship->end_date->format('d M Y') }}
+                                            @endif
+                                        </div>
+                                    </div>
+                                    @if ($relationship->end_date === null)
+                                        @can('update', $relationship)
+                                            <x-button variant="outline-secondary" size="sm" icon="bi-dash-circle" :href="route('beneficiaries.relationships.end', [$beneficiary, $relationship])">
+                                                End
+                                            </x-button>
+                                        @endcan
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                    @can('create', [\App\Models\PersonRelationship::class, $beneficiary])
+                        <x-button variant="outline-success" size="sm" icon="bi-people" :href="route('beneficiaries.relationships.create', $beneficiary)">
+                            Record relationship
+                        </x-button>
+                    @endcan
+                </x-card>
+            </div>
+        @endisset
+
+        @isset($household)
+            <div class="col-12 col-lg-5">
+                <x-card title="Household members" subtitle="{{ $household->household_code }} — {{ $household->household_name }}">
+                    @if (($household->members ?? collect())->isEmpty())
+                        <p class="small text-muted mb-0">No roster members recorded.</p>
+                    @else
+                        <ul class="list-group list-group-flush small mb-0">
+                            @foreach ($household->members as $member)
+                                <li class="list-group-item px-0 d-flex justify-content-between">
+                                    <span>
+                                        {{ trim($member->first_name.' '.($member->last_name ? $member->last_name : '')) }}
+                                        @if ($member->id === $beneficiary->person_id)
+                                            <x-badge variant="info" :pill="true">This child</x-badge>
+                                        @endif
+                                    </span>
+                                    <span>
+                                        @if ($member->is_guardian)
+                                            <x-badge variant="secondary" :pill="true">Guardian</x-badge>
+                                        @endif
+                                        @if ($member->is_caregiver)
+                                            <x-badge variant="secondary" :pill="true">Caregiver</x-badge>
+                                        @endif
+                                    </span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                </x-card>
+            </div>
+        @endisset
+    </div>
 @endsection

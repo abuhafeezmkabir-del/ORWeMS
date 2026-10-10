@@ -38,8 +38,9 @@ use Illuminate\Database\Seeder;
  * concern, not Phase 3B's.
  *
  * Only families that map to something ORWeMS actually has are defined. Families
- * whose permissions would be pure invention — education, health, care,
- * placement — are absent until those modules exist. The catalogue is a plain
+ * whose permissions would be pure invention — education and health — are
+ * absent until those modules exist; the care/placement family was added in
+ * Phase 5 alongside the module that gave it meaning. The catalogue is a plain
  * table, so adding `health.*` when the health module is built is additive and
  * needs no migration.
  *
@@ -108,6 +109,17 @@ class PermissionSeeder extends Seeder
             ['code' => 'relationships.view', 'name' => 'View relationships', 'description' => 'See how people within and between households are related.'],
             ['code' => 'relationships.create', 'name' => 'Record relationships', 'description' => 'Add relationship links within and between households.'],
             ['code' => 'relationships.update', 'name' => 'Edit relationships', 'description' => 'Amend recorded relationships.'],
+
+            // --- Care placements (Phase 5) --------------------------------------
+            // The care-history family. `close` exists for the same reason it
+            // does for needs and interventions: ending a placement is a
+            // distinct domain decision, separable from editing one, so the
+            // person who runs the case is not automatically the person who
+            // decides when it stopped.
+            ['code' => 'placements.view', 'name' => 'View care placements', 'description' => 'See a child’s current care arrangement and placement history.'],
+            ['code' => 'placements.create', 'name' => 'Record care placements', 'description' => 'Open a new care placement record for a child.'],
+            ['code' => 'placements.update', 'name' => 'Edit care placements', 'description' => 'Amend the substance of an active care placement.'],
+            ['code' => 'placements.close', 'name' => 'Close care placements', 'description' => 'End an active care placement with a dated closure.'],
 
             // --- Assessment ----------------------------------------------------
             ['code' => 'assessments.view', 'name' => 'View assessments', 'description' => 'See completed and in-progress welfare assessments.'],

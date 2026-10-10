@@ -90,6 +90,11 @@ class RolePermissionSeeder extends Seeder
                 'beneficiaries.view', 'beneficiaries.verify', 'beneficiaries.archive',
                 'households.view', 'households.archive',
                 'persons.view', 'relationships.view',
+                // Care oversight without casework entry, mirroring the
+                // needs/interventions split: the manager SEES the placement
+                // history and closes arrangements (the separation-of-duties
+                // action on a placement), but does not open or edit them.
+                'placements.view', 'placements.close',
                 'assessments.view', 'assessments.approve',
                 'needs.view', 'needs.close',
                 'interventions.view', 'interventions.close',
@@ -107,6 +112,11 @@ class RolePermissionSeeder extends Seeder
                 'households.view', 'households.create', 'households.update',
                 'persons.view', 'persons.create', 'persons.update',
                 'relationships.view', 'relationships.create', 'relationships.update',
+                // End-to-end placement casework: record, amend while active,
+                // close. The close/update split still binds inside the role —
+                // the POLICY refuses amending a closed placement, so "edit
+                // the history" is not a power this role (or any role) holds.
+                'placements.view', 'placements.create', 'placements.update', 'placements.close',
                 'assessments.view', 'assessments.create', 'assessments.update',
                 'needs.view', 'needs.create', 'needs.update',
                 'interventions.view', 'interventions.create', 'interventions.update',
@@ -122,6 +132,11 @@ class RolePermissionSeeder extends Seeder
                 'households.view', 'households.create', 'households.update',
                 'persons.view', 'persons.create', 'persons.update',
                 'relationships.view', 'relationships.create',
+                // Placement HISTORY is visible at intake (knowing where a
+                // child currently lives matters to every conversation), but
+                // recording, editing and closing placements are casework —
+                // deliberately absent here.
+                'placements.view',
                 'documents.view', 'documents.upload',
                 'programmes.view',
             ],
@@ -134,6 +149,9 @@ class RolePermissionSeeder extends Seeder
                 'beneficiaries.view',
                 'households.view',
                 'persons.view',
+                // Assessment is done WITH the care context in view — a
+                // child's current arrangement is standard assessment input.
+                'placements.view',
                 'assessments.view', 'assessments.create', 'assessments.update',
                 'needs.view', 'needs.create', 'needs.update',
                 'interventions.view',

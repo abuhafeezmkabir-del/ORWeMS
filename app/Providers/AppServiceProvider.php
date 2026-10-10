@@ -10,8 +10,12 @@ use App\Listeners\AuditPasswordReset;
 use App\Listeners\LogoutOtherSessionsAfterPasswordReset;
 use App\Listeners\RecordLastLoginAt;
 use App\Models\Beneficiary;
+use App\Models\PersonRelationship;
+use App\Models\Placement;
 use App\Models\User;
 use App\Policies\BeneficiaryPolicy;
+use App\Policies\PersonRelationshipPolicy;
+use App\Policies\PlacementPolicy;
 use App\Support\Authorization\PermissionCatalog;
 use Illuminate\Auth\Events\Authenticated;
 use Illuminate\Auth\Events\Failed;
@@ -121,5 +125,13 @@ class AppServiceProvider extends ServiceProvider
         // `$this->authorize('view', $beneficiary)` — never the permission code
         // directly, so the check is always permission AND scope together.
         Gate::policy(Beneficiary::class, BeneficiaryPolicy::class);
+
+        // Phase 5 — care and family policies, bound to the same fall-through.
+        // PlacementPolicy answers against the placement's BENEFICIARY scope;
+        // PersonRelationshipPolicy is the first workflow over Phase 2's edge
+        // model. Both re-check permissions in full: the binding only says
+        // WHICH policy answers, never what it answers.
+        Gate::policy(Placement::class, PlacementPolicy::class);
+        Gate::policy(PersonRelationship::class, PersonRelationshipPolicy::class);
     }
 }

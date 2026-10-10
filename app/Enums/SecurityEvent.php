@@ -91,4 +91,19 @@ enum SecurityEvent: string
      * deliberately does not implement (see docs/PHASE3D_SECURITY_HARDENING.md).
      */
     case TwoFactorChanged = 'two_factor_changed';
+
+    /** A care placement record was opened for a beneficiary (Phase 5). */
+    case CarePlacementCreated = 'care_placement_created';
+
+    /** An ACTIVE care placement was amended (Phase 5) — never a closed one. */
+    case CarePlacementUpdated = 'care_placement_updated';
+
+    /** A care placement was closed with an end date; the history row remains. */
+    case CarePlacementClosed = 'care_placement_closed';
+
+    /** A family/care relationship was recorded for a beneficiary (Phase 5). */
+    case BeneficiaryRelationshipCreated = 'beneficiary_relationship_created';
+
+    /** A recorded relationship was ended by setting its end date (Phase 5). */
+    case BeneficiaryRelationshipUpdated = 'beneficiary_relationship_updated';
 }
