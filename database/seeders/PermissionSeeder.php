@@ -132,6 +132,19 @@ class PermissionSeeder extends Seeder
             ['code' => 'education.update', 'name' => 'Edit education enrolments', 'description' => 'Amend the substance of a current education enrolment.'],
             ['code' => 'education.close', 'name' => 'Close education enrolments', 'description' => 'End a current education enrolment with a dated closure.'],
 
+            // --- Health records (Phase 6B) --------------------------------------
+            // Casework-level health records. The most sensitive content ORWeMS
+            // holds, so this family is granted deliberately and separately:
+            // education, reporting and general administration permissions
+            // confer NO health access. `view` gates both the record listing and
+            // the record pages; `close` ends a record (history retained). There
+            // is deliberately no health export, and health data never appears
+            // in general dashboards, search results or reports.
+            ['code' => 'health_records.view', 'name' => 'View health records', 'description' => 'See a child’s casework-level health records.'],
+            ['code' => 'health_records.create', 'name' => 'Record health records', 'description' => 'Open a new casework-level health record for a child.'],
+            ['code' => 'health_records.update', 'name' => 'Edit health records', 'description' => 'Amend the substance of an open health record. Closed records are history and are never amended.'],
+            ['code' => 'health_records.close', 'name' => 'Close health records', 'description' => 'End an open health record with a dated closure.'],
+
             // --- Assessment ----------------------------------------------------
             ['code' => 'assessments.view', 'name' => 'View assessments', 'description' => 'See completed and in-progress welfare assessments.'],
             ['code' => 'assessments.create', 'name' => 'Conduct assessments', 'description' => 'Record new welfare assessments.'],

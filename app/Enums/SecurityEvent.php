@@ -115,4 +115,16 @@ enum SecurityEvent: string
 
     /** An education enrolment was closed with an end date; the history row remains. */
     case EducationEnrolmentClosed = 'education_enrolment_closed';
+
+    /** A casework-level health record was opened for a beneficiary (Phase 6B). */
+    case HealthRecordCreated = 'health_record_created';
+
+    /** An OPEN health record was amended (Phase 6B) — never a closed one. */
+    case HealthRecordUpdated = 'health_record_updated';
+
+    /** A health record was viewed (Phase 6B) — case-file section or record page. */
+    case HealthRecordViewed = 'health_record_viewed';
+
+    /** A health record was closed with an end date; the history row remains. */
+    case HealthRecordClosed = 'health_record_closed';
 }

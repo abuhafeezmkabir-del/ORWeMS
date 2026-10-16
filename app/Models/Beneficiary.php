@@ -259,4 +259,29 @@ class Beneficiary extends Model
             ->with(['educationLevel', 'institution'])
             ->first();
     }
+
+    /**
+     * The child's casework-level health history (Phase 6B), newest first.
+     *
+     * An append log, like placements and enrolments, with one deliberate
+     * difference: several DIFFERENT concerns may be open at once (a healing
+     * wound AND a referral in progress is ordinary casework), so there is no
+     * single "current" accessor — only the open/closed derivation on the
+     * record itself (HealthRecord::isOpen). A beneficiary-level helper would
+     * imply one current record, which would be a lie the schema refuses.
+     */
+    public function healthRecords(): HasMany
+    {
+        return $this->hasMany(HealthRecord::class)->orderByDesc('record_date')->orderByDesc('id');
+    }
+
+    /**
+     * The child's OPEN health records, newest first. Used for the case-file
+     * section counts — loaded only for operators the HealthRecordPolicy
+     * answers yes to, never for anyone else.
+     */
+    public function openHealthRecords()
+    {
+        return $this->healthRecords()->whereNull('end_date');
+    }
 }

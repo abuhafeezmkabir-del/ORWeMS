@@ -99,6 +99,13 @@ class RolePermissionSeeder extends Seeder
                 // manager SEES it and closes an enrolment, but does not open
                 // or amend one — that is casework.
                 'education.view', 'education.close',
+                // Health history follows the same oversight shape: the manager
+                // SEES it and closes a record, but does not open or amend one —
+                // that is casework. Health data is the most sensitive content
+                // ORWeMS holds, so the manager sees only the records of
+                // children already in their programme/geographic scope —
+                // scope narrows every record, as for every other family.
+                'health_records.view', 'health_records.close',
                 'assessments.view', 'assessments.approve',
                 'needs.view', 'needs.close',
                 'interventions.view', 'interventions.close',
@@ -126,6 +133,11 @@ class RolePermissionSeeder extends Seeder
                 // the POLICY refuses amending a closed enrolment, so "edit
                 // the history" is not a power this role (or any role) holds.
                 'education.view', 'education.create', 'education.update', 'education.close',
+                // End-to-end health casework: record, amend while open, close.
+                // The close/update split still binds inside the role — the
+                // POLICY refuses amending a closed record, so "edit the
+                // history" is not a power this role (or any role) holds.
+                'health_records.view', 'health_records.create', 'health_records.update', 'health_records.close',
                 'assessments.view', 'assessments.create', 'assessments.update',
                 'needs.view', 'needs.create', 'needs.update',
                 'interventions.view', 'interventions.create', 'interventions.update',
@@ -149,6 +161,11 @@ class RolePermissionSeeder extends Seeder
                 // context); writing it is casework.
                 'placements.view',
                 'education.view',
+                // Health is deliberately ABSENT at intake. Placement and
+                // education history are visible because they shape the intake
+                // conversation; health history is disclosed only to the
+                // caseworkers who need it, under their own permissions.
+                // Least privilege means the default is no health access.
                 'documents.view', 'documents.upload',
                 'programmes.view',
             ],
@@ -166,7 +183,10 @@ class RolePermissionSeeder extends Seeder
                 'placements.view',
                 // Education history is standard assessment input too (school
                 // attendance and level shape a welfare picture); assessing is
-                // not recording it.
+                // not recording it. Health, by contrast, is not assessment
+                // input by default: an assessor sees health records only when
+                // WICHOV explicitly grants the health permissions, never
+                // through the assessment role itself.
                 'education.view',
                 'assessments.view', 'assessments.create', 'assessments.update',
                 'needs.view', 'needs.create', 'needs.update',

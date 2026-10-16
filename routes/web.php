@@ -3,6 +3,7 @@
 use App\Http\Controllers\BeneficiaryController;
 use App\Http\Controllers\BeneficiaryRelationshipController;
 use App\Http\Controllers\EducationController;
+use App\Http\Controllers\HealthRecordController;
 use App\Http\Controllers\PlacementController;
 use App\Http\Controllers\RoleAdministrationController;
 use Illuminate\Support\Facades\Route;
@@ -328,5 +329,79 @@ Route::middleware(['auth', 'account.active', 'password.fresh'])
             ->middleware('permission:education.close')
             ->withTrashed()
             ->name('education.close.confirm');
+    });
+
+/*
+|--------------------------------------------------------------------------
+| Restricted Health Records (Phase 6B)
+|--------------------------------------------------------------------------
+|
+| Nested under each beneficiary because a health record IS case content of
+| the child it describes: it has no existence apart from the case file, and
+| it inherits that file's scope. The middleware order is the same WHO →
+| WHETHER → FRESHNESS → WHAT stack as Phase 4/5/6A, and the `:{column}`
+| binding + withTrashed() mirror it exactly — an archived beneficiary's
+| history resolves and is answered by the policy (403 for writes, view for
+| reads), never by a 404 that would pretend the record is missing.
+|
+| Nested {healthRecord} bindings additionally check that the child in the URL
+| owns the record (404 otherwise): a cross-record id in a URL is a mistake,
+| and 403 would confirm the id exists.
+|
+| There is deliberately no DELETE route — not for health records. Closing (a
+| dated, reasoned, audited state change) is the terminal action for health
+| history, because health history is evidence. "Open" is derived from
+| end_date IS NULL, never a stored status that could drift. Several DIFFERENT
+| concerns may be open at once; only the exact open duplicate is refused.
+|
+| PRIVACY: unlike every other family, the health LISTING and the case-file
+| section are gated by the same `viewFor` policy question, and the controller
+| never loads health rows for an operator the policy refuses. Health data
+| never appears in general dashboards, search results, reports, flash
+| messages or exception text — only on these routes, for these operators.
+*/
+Route::middleware(['auth', 'account.active', 'password.fresh'])
+    ->prefix('beneficiaries')
+    ->name('beneficiaries.')
+    ->group(function () {
+        Route::get('/{beneficiary:beneficiary_ref}/health', [HealthRecordController::class, 'index'])
+            ->middleware('permission:health_records.view')
+            ->withTrashed()
+            ->name('health.index');
+
+        Route::get('/{beneficiary:beneficiary_ref}/health/create', [HealthRecordController::class, 'create'])
+            ->middleware('permission:health_records.create')
+            ->withTrashed()
+            ->name('health.create');
+
+        Route::post('/{beneficiary:beneficiary_ref}/health', [HealthRecordController::class, 'store'])
+            ->middleware('permission:health_records.create')
+            ->withTrashed()
+            ->name('health.store');
+
+        Route::get('/{beneficiary:beneficiary_ref}/health/{healthRecord}', [HealthRecordController::class, 'show'])
+            ->middleware('permission:health_records.view')
+            ->withTrashed()
+            ->name('health.show');
+
+        Route::get('/{beneficiary:beneficiary_ref}/health/{healthRecord}/edit', [HealthRecordController::class, 'edit'])
+            ->middleware('permission:health_records.update')
+            ->withTrashed()
+            ->name('health.edit');
+
+        Route::put('/{beneficiary:beneficiary_ref}/health/{healthRecord}', [HealthRecordController::class, 'update'])
+            ->middleware('permission:health_records.update')
+            ->withTrashed()
+            ->name('health.update');
+
+        Route::get('/{beneficiary:beneficiary_ref}/health/{healthRecord}/close', [HealthRecordController::class, 'close'])
+            ->middleware('permission:health_records.close')
+            ->withTrashed()
+            ->name('health.close');
+
+        Route::post('/{beneficiary:beneficiary_ref}/health/{healthRecord}/close', [HealthRecordController::class, 'confirmClose'])
+            ->middleware('permission:health_records.close')
+            ->withTrashed()
+            ->name('health.close.confirm');
     });
 

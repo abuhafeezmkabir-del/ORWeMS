@@ -11,11 +11,13 @@ use App\Listeners\LogoutOtherSessionsAfterPasswordReset;
 use App\Listeners\RecordLastLoginAt;
 use App\Models\Beneficiary;
 use App\Models\EducationEnrolment;
+use App\Models\HealthRecord;
 use App\Models\PersonRelationship;
 use App\Models\Placement;
 use App\Models\User;
 use App\Policies\BeneficiaryPolicy;
 use App\Policies\EducationEnrolmentPolicy;
+use App\Policies\HealthRecordPolicy;
 use App\Policies\PersonRelationshipPolicy;
 use App\Policies\PlacementPolicy;
 use App\Support\Authorization\PermissionCatalog;
@@ -141,5 +143,11 @@ class AppServiceProvider extends ServiceProvider
         // scope, exactly like PlacementPolicy. The binding only says WHICH
         // policy answers, never what it answers.
         Gate::policy(EducationEnrolment::class, EducationEnrolmentPolicy::class);
+
+        // Phase 6B — restricted health record policy, bound to the same
+        // fall-through. HealthRecordPolicy answers against the record's
+        // BENEFICIARY scope, exactly like EducationEnrolmentPolicy. The
+        // binding only says WHICH policy answers, never what it answers.
+        Gate::policy(HealthRecord::class, HealthRecordPolicy::class);
     }
 }

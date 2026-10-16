@@ -38,6 +38,9 @@ class DatabaseSeeder extends Seeder
             // Phase 6A — the education level vocabulary (reference data).
             // Institutions are deliberately NOT seeded (see Institution model).
             EducationLevelSeeder::class,
+            // Phase 6B — the health concern vocabulary (reference data).
+            // Health records themselves are case data, never seeded.
+            HealthConcernSeeder::class,
             NeedCategorySeeder::class,
             InterventionTypeSeeder::class,
         ]);

@@ -6,6 +6,7 @@ use App\Http\Requests\StoreBeneficiaryRequest;
 use App\Models\Beneficiary;
 use App\Models\Community;
 use App\Models\EducationEnrolment;
+use App\Models\HealthRecord;
 use App\Models\LocalGovernmentArea;
 use App\Models\PersonRelationship;
 use App\Models\Placement;
@@ -205,6 +206,24 @@ class BeneficiaryController extends Controller
             $data['enrolments'] = $enrolments;
             $data['currentEnrolment'] = $enrolments->first(
                 fn (EducationEnrolment $enrolment): bool => $enrolment->isCurrent()
+            );
+        }
+
+        // HEALTH (Phase 6B) — the same lazy shape as education, but added
+        // deliberately rather than copied: health rows are loaded ONLY for
+        // operators the HealthRecordPolicy answers yes to. Anyone else
+        // receives nothing, and the view answers with the neutral restricted
+        // line — no counts (a count discloses how much health history
+        // exists), no summaries, no referral detail. The controller must not
+        // expose health data to Blade before the policy has spoken.
+        if (Gate::forUser($user)->allows('viewFor', [HealthRecord::class, $beneficiary])) {
+            $healthRecords = $beneficiary->healthRecords()
+                ->with(['healthConcern:id,code,name'])
+                ->get();
+
+            $data['healthRecords'] = $healthRecords;
+            $data['openHealthRecords'] = $healthRecords->filter(
+                fn (HealthRecord $record): bool => $record->isOpen()
             );
         }
 

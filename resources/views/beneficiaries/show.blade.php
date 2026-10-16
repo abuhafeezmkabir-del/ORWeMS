@@ -240,6 +240,72 @@
             </div>
         @endisset
 
+        {{--
+            HEALTH (Phase 6B) — the restricted section. Two shapes, and the
+            difference is the privacy guarantee:
+
+            - AUTHORIZED (the controller loaded $healthRecords): open records
+              with concern + follow-up state, closed history beneath, and the
+              management links — each link policy-gated again in Blade.
+            - UNAUTHORIZED (the controller loaded nothing): the neutral line
+              below. No counts, no summaries, no referral detail, no follow-up
+              state. A count would disclose how much health history exists;
+              anything more specific would be the disclosure this section
+              exists to prevent.
+
+            The controller is what enforces this: $healthRecords is null
+            unless HealthRecordPolicy::viewFor answered yes, so @isset here is
+            reading a policy decision, not merely hiding a loaded collection.
+        --}}
+        @isset($healthRecords)
+            <div class="col-12 col-lg-5">
+                <x-card title="Health records" subtitle="Restricted — casework-level health tracking" class="mb-4">
+                    @if ($healthRecords->isEmpty())
+                        <p class="small text-muted mb-3">No health records have been recorded for this child.</p>
+                    @else
+                        <ul class="list-group list-group-flush small mb-3">
+                            @foreach ($healthRecords as $record)
+                                <li class="list-group-item px-0 d-flex justify-content-between align-items-start gap-3">
+                                    <div>
+                                        <div class="fw-semibold text-dark">
+                                            {{ $record->healthConcern?->name ?? '—' }}
+                                        </div>
+                                        <div class="text-muted fst-italic">
+                                            recorded {{ $record->record_date?->format('d M Y') }}
+                                            @if ($record->end_date !== null)
+                                                — closed {{ $record->end_date->format('d M Y') }}
+                                            @endif
+                                        </div>
+                                    </div>
+                                    @if ($record->isOpen())
+                                        <x-badge variant="warning" :pill="true">Open</x-badge>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                    <div class="d-flex gap-2">
+                        @can('viewFor', [\App\Models\HealthRecord::class, $beneficiary])
+                            <x-button variant="outline-primary" size="sm" icon="bi-heart-pulse" :href="route('beneficiaries.health.index', $beneficiary)">
+                                Full health history
+                            </x-button>
+                        @endcan
+                        @can('create', [\App\Models\HealthRecord::class, $beneficiary])
+                            <x-button variant="outline-success" size="sm" icon="bi-heart-pulse-fill" :href="route('beneficiaries.health.create', $beneficiary)">
+                                Record health record
+                            </x-button>
+                        @endcan
+                    </div>
+                </x-card>
+            </div>
+        @else
+            <div class="col-12 col-lg-5">
+                <x-card title="Health records" subtitle="Restricted" class="mb-4">
+                    <p class="small text-muted mb-0 fst-italic">Health information is restricted.</p>
+                </x-card>
+            </div>
+        @endisset
+
         @isset($relationships)
             <div class="col-12 col-lg-7">
                 <x-card title="Family & guardians" subtitle="Recorded relationships for this child">
