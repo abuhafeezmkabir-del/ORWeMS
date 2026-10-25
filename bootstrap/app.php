@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\ApplySecurityHeaders;
 use App\Http\Middleware\AssignRequestId;
+use App\Http\Middleware\DemoSessionMiddleware;
 use App\Http\Middleware\EnsureAccountIsActive;
 use App\Http\Middleware\EnsurePasswordIsFresh;
 use App\Http\Middleware\EnsureSecureTransport;
@@ -18,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
         then: function () {
             Route::middleware('web')->group(base_path('routes/auth.php'));
+            require base_path('routes/demo.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
@@ -67,6 +69,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'account.active' => EnsureAccountIsActive::class,
             'permission' => EnsureUserHasPermission::class,
+            'demo.session' => DemoSessionMiddleware::class,
+            'password.fresh' => EnsurePasswordIsFresh::class,
 
             // Phase 3D — password-age gate. Explicit alias on the route for the
             // same reason as the two above. It is a no-op unless password

@@ -96,4 +96,18 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Demonstration Mode Configuration
+    |--------------------------------------------------------------------------
+    */
+
+    'demo' => [
+
+        'enabled' => filter_var(env('ORWEMS_DEMO_ENABLED', false), FILTER_VALIDATE_BOOLEAN),
+        'email' => env('ORWEMS_DEMO_EMAIL', 'demo@wicov.org'),
+        'password' => env('ORWEMS_DEMO_PASSWORD', 'demo123'),
+
+    ],
+
 ];
