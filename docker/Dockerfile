@@ -37,7 +37,10 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Copy the application code
 COPY . /var/www/html
 
-# Make start script executable
+# Copy the Docker startup script into the image and make it executable.
+# Source must use the repository-root-relative path `docker/start.sh`
+# because the Docker build context is the repository root, not `docker/`.
+COPY docker/start.sh /docker/start.sh
 RUN chmod +x /docker/start.sh
 
 # Install Composer dependencies (without dev for production)
