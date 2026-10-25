@@ -59,6 +59,9 @@ RUN mkdir -p /var/www/html/storage /var/www/html/bootstrap/cache && \
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-enabled/000-default.conf
 
+# Ensure Apache allows .htaccess overrides for Laravel
+RUN sed -ri 's/AllowOverride None/AllowOverride All/' /etc/apache2/sites-enabled/000-default.conf || true
+
 # Expose port 80 (Render will map via PORT env var)
 EXPOSE 80
 
