@@ -47,7 +47,13 @@ RUN chmod +x /docker/start.sh
 RUN composer install --no-interaction --optimize-autoloader --no-dev
 
 # Set permissions for Laravel storage and cache
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/public/storage
+# Create directories first so chown does not fail on missing paths
+RUN mkdir -p /var/www/html/storage /var/www/html/bootstrap/cache && \
+    if [ -d /var/www/html/public/storage ]; then \
+        chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/public/storage; \
+    else \
+        chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache; \
+    fi
 
 # Configure Apache document root
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
