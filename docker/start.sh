@@ -11,8 +11,37 @@ fi
 # Set Apache to listen on the Render-assigned port
 # Apache default is 80, but Render maps $PORT to the container
 if [ -n "$PORT" ]; then
-    # Update Apache port if needed
-    sed -i "s/Listen 80/Listen $PORT/" /etc/apache2/ports.conf 2>/dev/null || true
+    # Update Apache listen port
+    if ! sed -i "s/Listen 80/Listen $PORT/" /etc/apache2/ports.conf 2>/dev/null; then
+        echo "ERROR: Failed to update Apache listen port in /etc/apache2/ports.conf" >&2
+        exit 1
+    fi
+
+    # Keep VirtualHost port in sync with Listen port
+    if ! sed -i "s/\*:80/\*:$PORT/" /etc/apache2/sites-enabled/000-default.conf 2>/dev/null; then
+        echo "ERROR: Failed to update VirtualHost port in /etc/apache2/sites-enabled/000-default.conf" >&2
+        exit 1
+    fi
+
+    # Validate that both Listen and VirtualHost use the same port
+    if ! grep -q "Listen $PORT" /etc/apache2/ports.conf 2>/dev/null; then
+        echo "ERROR: Apache Listen port not set to $PORT" >&2
+        exit 1
+    fi
+    if ! grep -q "\*:$PORT" /etc/apache2/sites-enabled/000-default.conf 2>/dev/null; then
+        echo "ERROR: Apache VirtualHost port not set to $PORT" >&2
+        exit 1
+    fi
+    if ! grep -q 'DocumentRoot /var/www/html/public' /etc/apache2/sites-enabled/000-default.conf 2>/dev/null; then
+        echo "ERROR: DocumentRoot not set to /var/www/html/public" >&2
+        exit 1
+    fi
+
+    # Ensure Apache configuration is valid for the updated ports and document root
+    if ! apache2ctl configtest >/dev/null 2>&1; then
+        echo "ERROR: Apache configuration test failed" >&2
+        exit 1
+    fi
 fi
 
 # Ensure storage and cache directories are writable
