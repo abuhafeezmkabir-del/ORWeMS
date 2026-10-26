@@ -55,12 +55,10 @@ RUN mkdir -p /var/www/html/storage /var/www/html/bootstrap/cache && \
         chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache; \
     fi
 
-# Configure Apache document root
-ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-enabled/000-default.conf
-
-# Ensure Apache allows .htaccess overrides for Laravel
-RUN sed -ri 's/AllowOverride None/AllowOverride All/' /etc/apache2/sites-enabled/000-default.conf || true
+# Configure Apache document root to Laravel public directory
+COPY docker/000-default.conf /etc/apache2/sites-enabled/000-default.conf
+RUN apache2ctl configtest && \
+    grep -q 'DocumentRoot /var/www/html/public' /etc/apache2/sites-enabled/000-default.conf || { echo "ERROR: DocumentRoot not set correctly"; exit 1; }
 
 # Expose port 80 (Render will map via PORT env var)
 EXPOSE 80
