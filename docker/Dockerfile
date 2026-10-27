@@ -1,3 +1,30 @@
+# ============================================
+# Stage 1: Frontend build (Vite production assets)
+# ============================================
+FROM node:20-slim AS frontend-build
+
+WORKDIR /build
+
+# Copy frontend manifest and lockfile for reproducible install
+COPY package.json package-lock.json ./
+
+# Install frontend dependencies (ci = clean install from lockfile)
+RUN npm ci
+
+# Copy Vite config and source assets
+COPY vite.config.js ./
+COPY resources/sass ./resources/sass
+COPY resources/js ./resources/js
+
+# Build production assets into public/build/
+RUN npm run build
+
+# Validate that Vite produced a non-empty manifest; fail the build if missing
+RUN test -s public/build/manifest.json || { echo "ERROR: Vite manifest missing or empty"; exit 1; }
+
+# ============================================
+# Stage 2: PHP/Apache runtime
+# ============================================
 FROM php:8.2-apache
 
 # Enable Apache mod_rewrite for Laravel routing
@@ -36,6 +63,9 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Copy the application code
 COPY . /var/www/html
+
+# Copy Vite production assets from the frontend build stage
+COPY --from=frontend-build /build/public/build /var/www/html/public/build
 
 # Copy the Docker startup script into the image and make it executable.
 # Source must use the repository-root-relative path `docker/start.sh`
