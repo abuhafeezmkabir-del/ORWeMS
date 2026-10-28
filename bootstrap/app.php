@@ -31,12 +31,12 @@ return Application::configure(basePath: dirname(__DIR__))
         // to Laravel, causing asset URLs (via @vite()) to be generated as
         // http:// and blocked by browsers as mixed content on an https:// page.
         //
-        // patterns: '*' trusts all proxies because Render's proxy addresses
+        // at: '*' trusts all proxies because Render's proxy addresses
         // are not published in a fixed range. headers: X-Forwarded-Proto only
         // allows the scheme header to influence the request; host and client
         // IP are not overridable via forwarded headers.
         $middleware->trustProxies(
-            patterns: '*',
+            at: '*',
             headers: Request::HEADER_X_FORWARDED_PROTO,
         );
 
