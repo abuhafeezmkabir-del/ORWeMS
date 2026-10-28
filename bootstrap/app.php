@@ -10,6 +10,7 @@ use App\Http\Middleware\EnsureUserHasPermission;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -23,6 +24,22 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Trust Render's HTTPS reverse proxy so Laravel correctly recognizes
+        // HTTPS requests forwarded over HTTP from the container. Render
+        // terminates TLS at the edge and forwards X-Forwarded-Proto to the
+        // container. Without this trust, every request looks like plain HTTP
+        // to Laravel, causing asset URLs (via @vite()) to be generated as
+        // http:// and blocked by browsers as mixed content on an https:// page.
+        //
+        // patterns: '*' trusts all proxies because Render's proxy addresses
+        // are not published in a fixed range. headers: X-Forwarded-Proto only
+        // allows the scheme header to influence the request; host and client
+        // IP are not overridable via forwarded headers.
+        $middleware->trustProxies(
+            patterns: '*',
+            headers: Request::HEADER_X_FORWARDED_PROTO,
+        );
+
         // Authentication routes.
         $middleware->redirectGuestsTo(fn () => route('login'));
         $middleware->redirectUsersTo(fn () => route('dashboard'));
