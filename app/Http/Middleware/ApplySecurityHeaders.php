@@ -109,7 +109,7 @@ class ApplySecurityHeaders
         $dev = $this->viteDevOrigins();
 
         $script = array_merge(["'self'"], $dev['script']);
-        $style = array_merge(["'self'", "'unsafe-inline'"], $dev['style']);
+        $style = array_merge(["'self'", "'unsafe-inline'", 'https://cdn.jsdelivr.net', 'https://cdnjs.cloudflare.com'], $dev['style']);
         $connect = array_merge(["'self'"], $dev['connect']);
 
         $directives = [
